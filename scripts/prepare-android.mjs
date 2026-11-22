@@ -237,7 +237,27 @@ function patchAppName() {
   }
 }
 
+/**
+ * Понижает minSdkVersion в android/variables.gradle до 26 (Android 8.0),
+ * сохраняя высокий targetSdkVersion / compileSdkVersion.
+ */
+function patchGradleSdk() {
+  const varsPath = path.join(ANDROID_DIR, 'variables.gradle');
+  if (!fs.existsSync(varsPath)) {
+    log('Предупреждение: variables.gradle не найден — пропуск настройки minSdkVersion.');
+    return;
+  }
+
+  let content = fs.readFileSync(varsPath, 'utf8');
+  if (/minSdkVersion\s*=\s*\d+/.test(content)) {
+    content = content.replace(/minSdkVersion\s*=\s*\d+/, 'minSdkVersion = 26');
+    fs.writeFileSync(varsPath, content, 'utf8');
+    log('minSdkVersion установлен в 26 (Android 8.0+).');
+  }
+}
+
 patchManifest();
 patchIcons();
 patchAppName();
+patchGradleSdk();
 log('Готово.');
