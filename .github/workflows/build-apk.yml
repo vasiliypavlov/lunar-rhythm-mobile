@@ -1,3 +1,5 @@
+# Готовый файл скачивается во вкладке Actions → Artifacts.
+
 name: Build APK
 
 on:
