@@ -388,6 +388,13 @@ function stripTrailingDot(str) {
   return String(str || '').replace(/[.!?\s]+$/g, '').trim();
 }
 
+function getFirstSentence(str) {
+  const clean = String(str || '').trim();
+  if (!clean) return '';
+  const match = clean.match(/^[^.!?]+[.!?]?/);
+  return match ? stripTrailingDot(match[0]) : stripTrailingDot(clean);
+}
+
 const PASSIVE_PHASES = new Set(['phase_minimum', 'phase_decline']);
 const ACTIVE_ZODIAC_SIGNS = new Set(['Овен', 'Близнецы', 'Лев', 'Стрелец', 'Водолей']);
 const ACTIVE_LUNAR_DAYS = new Set([3, 7, 8, 10, 11, 14, 17, 20, 21]);
@@ -411,12 +418,28 @@ function buildBackdropContrastSentence(baseLang, { isPersonal, phaseKey, activeL
   const personalPolarity = getPersonalPacingPolarity(phaseKey);
 
   if (personalPolarity === 'passive' && lunarPolarity === 'active') {
+    const isMinimum = phaseKey === 'phase_minimum';
     switch (baseLang) {
-      case 'ru': return 'Внешняя деловая среда сейчас ускоряется, но ваш личный ресурс в фазе восстановления — не смешивайте внешний ажиотаж со своими приоритетами и завершайте уже начатое.';
-      case 'es': return 'El entorno externo gana impulso comercial, pero tu recurso personal está en pausa de recuperación — no mezcles la prisa externa con tus prioridades y cierra lo iniciado.';
-      case 'de': return 'Das äußere Umfeld gewinnt an Tempo, während Ihre persönliche Ressource auf Erholung steht — verwechseln Sie äußere Dynamik nicht mit Ihren Prioritäten und schließen Sie Laufendes ab.';
-      case 'fr': return 'L’environnement extérieur gagne en dynamisme alors que votre ressource personnelle est en phase de récupération — ne confondez pas l’élan ambiant avec vos priorités et bouclez l’existant.';
-      default: return 'The external environment carries fast business momentum, while your personal pacing is in a recovery window — keep external urgency separate from your own priorities and focus on finishing open items.';
+      case 'ru': {
+        const modeDesc = isMinimum ? 'отдых и восстановление сил' : 'спокойный ритм и экономия сил';
+        return `Но нужно учитывать, что ваш личный режим сейчас — ${modeDesc}. Внешний импульс стоит направить на закрытие текущих дел и воздержаться от новых стартов.`;
+      }
+      case 'es': {
+        const modeDesc = isMinimum ? 'descanso y recuperación de fuerzas' : 'ritmo tranquilo y ahorro de energía';
+        return `Pero conviene tener en cuenta que tu modo personal es de ${modeDesc}. Dirige el impulso externo a cerrar tareas en curso y abstente de nuevos inicios.`;
+      }
+      case 'de': {
+        const modeDesc = isMinimum ? 'Ruhe und Kräfteerholung' : 'ruhiges Tempo und Kräfteschonung';
+        return `Berücksichtigen Sie jedoch, dass Ihr persönlicher Modus auf ${modeDesc} steht. Nutzen Sie den äußeren Impuls für den Abschluss laufender Aufgaben und verzichten Sie auf Neustarts.`;
+      }
+      case 'fr': {
+        const modeDesc = isMinimum ? 'repos et récupération des forces' : 'rythme calme et économie d’énergie';
+        return `Mais gardez à l’esprit que votre mode personnel est au ${modeDesc}. Orientez l’élan extérieur vers la clôture des dossiers en cours et abstenez-vous de nouveaux départs.`;
+      }
+      default: {
+        const modeDesc = isMinimum ? 'rest and energy recovery' : 'steady pacing and conserving energy';
+        return `Still, factor in that your personal mode is ${modeDesc}. Direct the outward momentum into finishing ongoing work and refrain from new launches.`;
+      }
     }
   }
 
@@ -432,7 +455,7 @@ function buildBackdropContrastSentence(baseLang, { isPersonal, phaseKey, activeL
 
   if (personalPolarity === 'passive' && lunarPolarity === 'restrained') {
     switch (baseLang) {
-      case 'ru': return 'И личный темп, и внешний фон единодушны: день лучше провести бережно, без перегрузок и спорных решений.';
+      case 'ru': return 'И личный темп, и внешний фон единодушны: день лучше провести в спокойном темпе, без перегрузок и спорных решений.';
       case 'es': return 'Tanto tu ritmo personal como el entorno coinciden: conviene llevar el día con calma, sin sobrecargas ni decisiones arriesgadas.';
       case 'de': return 'Sowohl Ihr persönliches Tempo als auch das äußere Umfeld raten zu Zurückhaltung — ohne Überlastung und riskante Schritte.';
       case 'fr': return 'Votre rythme personnel et le contexte ambiant convergent : gardez une journée douce, sans surcharge ni décision risquée.';
@@ -447,6 +470,91 @@ function buildBackdropContrastSentence(baseLang, { isPersonal, phaseKey, activeL
     case 'fr': return 'Votre ressource et le contexte ambiant soutiennent tous deux l’élan — un créneau bien aligné pour avancer.';
     default: return 'Both your personal capacity and the external backdrop support forward motion — a well-aligned window for decisive steps.';
   }
+}
+
+function formatCalendarBackdropText(baseLang, { isPersonal, phaseKey, activeLunarDay, backdropLead, lunarNoteSentence, contrastSentence }) {
+  const lunarPolarity = getLunarDayPolarity(activeLunarDay);
+  const personalPolarity = isPersonal ? getPersonalPacingPolarity(phaseKey) : 'neutral';
+
+  if (isPersonal && personalPolarity === 'passive' && lunarPolarity === 'active' && lunarNoteSentence) {
+    const cleanQuote = stripTrailingDot(lunarNoteSentence);
+    switch (baseLang) {
+      case 'ru':
+        return `${backdropLead} Для внешней деловой среды это: «${cleanQuote}». ${contrastSentence}`;
+      case 'es':
+        return `${backdropLead} Para el entorno laboral externo es: «${cleanQuote}». ${contrastSentence}`;
+      case 'de':
+        return `${backdropLead} Für das äußere Arbeitsumfeld gilt: „${cleanQuote}“. ${contrastSentence}`;
+      case 'fr':
+        return `${backdropLead} Pour l’environnement extérieur, c’est : « ${cleanQuote} ». ${contrastSentence}`;
+      default:
+        return `${backdropLead} For the external business environment, this marks: "${cleanQuote}." ${contrastSentence}`;
+    }
+  }
+
+  return [backdropLead, lunarNoteSentence, contrastSentence].filter(Boolean).join(' ');
+}
+
+function buildLunarBackdropSpeechLine(baseLang, { lunarDaySpeech, lunarDayNote, phaseKey, activeLunarDay, bgAdvice, contrastSentence }) {
+  const lunarPolarity = getLunarDayPolarity(activeLunarDay);
+  const personalPolarity = getPersonalPacingPolarity(phaseKey);
+  const isConflict = personalPolarity === 'passive' && lunarPolarity === 'active';
+
+  if (isConflict) {
+    const firstDesc = uncapitalizeFirst(getFirstSentence(lunarDayNote));
+    const isMinimum = phaseKey === 'phase_minimum';
+    let mainLine = '';
+    switch (baseLang) {
+      case 'ru': {
+        const modeDesc = isMinimum ? 'отдых и восстановление сил' : 'спокойный ритм и экономия сил';
+        mainLine = `На внешнем календарном фоне сейчас ${lunarDaySpeech}${firstDesc ? ` — для общей среды это ${firstDesc}` : ''}, но нужно учитывать, что ваш личный режим сейчас — ${modeDesc}. Внешний импульс стоит направить на закрытие текущих дел и воздержаться от новых стартов.`;
+        if (bgAdvice) mainLine += ` На длинной дистанции сегодня ощущается точный пик: ${uncapitalizeFirst(bgAdvice)}.`;
+        return { isConflict: true, line: mainLine };
+      }
+      case 'es': {
+        const modeDesc = isMinimum ? 'descanso y recuperación de fuerzas' : 'ritmo tranquilo y ahorro de energía';
+        mainLine = `En el contexto externo del calendario transcurre el ${lunarDaySpeech}${firstDesc ? ` — para el entorno general es ${firstDesc}` : ''}, pero conviene tener en cuenta que tu modo personal es de ${modeDesc}. Dirige el impulso externo a cerrar tareas en curso y abstente de nuevos inicios.`;
+        if (bgAdvice) mainLine += ` Además hay un pico exacto de fondo: ${uncapitalizeFirst(bgAdvice)}.`;
+        return { isConflict: true, line: mainLine };
+      }
+      case 'de': {
+        const modeDesc = isMinimum ? 'Ruhe und Kräfteerholung' : 'ruhiges Tempo und Kräfteschonung';
+        mainLine = `Im äußeren Kalender-Hintergrund läuft der ${lunarDaySpeech}${firstDesc ? ` — für das allgemeine Umfeld gilt: ${firstDesc}` : ''}, doch berücksichtigen Sie, dass Ihr persönlicher Modus auf ${modeDesc} steht. Nutzen Sie den äußeren Impuls für laufende Abschlüsse und verzichten Sie auf Neustarts.`;
+        if (bgAdvice) mainLine += ` Zugleich gibt es einen exakten Hintergrund-Höhepunkt: ${bgAdvice}.`;
+        return { isConflict: true, line: mainLine };
+      }
+      case 'fr': {
+        const modeDesc = isMinimum ? 'repos et récupération des forces' : 'rythme calme et économie d’énergie';
+        mainLine = `Dans le contexte extérieur du calendrier, c’est le ${lunarDaySpeech}${firstDesc ? ` — pour l’ambiance générale, c’est ${firstDesc}` : ''}, mais gardez à l’esprit que votre mode personnel est au ${modeDesc}. Orientez l’élan extérieur vers la clôture des dossiers en cours et abstenez-vous de nouveaux départs.`;
+        if (bgAdvice) mainLine += ` Un pic exact de fond s’y ajoute : ${uncapitalizeFirst(bgAdvice)}.`;
+        return { isConflict: true, line: mainLine };
+      }
+      default: {
+        const modeDesc = isMinimum ? 'rest and energy recovery' : 'steady pacing and conserving energy';
+        mainLine = `In the external calendar backdrop, today is the ${lunarDaySpeech}${firstDesc ? ` — for the general environment that means ${firstDesc}` : ''}, yet factor in that your personal mode is ${modeDesc}. Channel outward momentum into closing ongoing items and refrain from new launches.`;
+        if (bgAdvice) mainLine += ` Alongside an exact background peak: ${uncapitalizeFirst(bgAdvice)}.`;
+        return { isConflict: true, line: mainLine };
+      }
+    }
+  }
+
+  let line = '';
+  if (bgAdvice) {
+    switch (baseLang) {
+      case 'ru': line = `${stripTrailingDot(lunarDayNote)}, а на длинной дистанции сегодня ощущается точный пик: ${uncapitalizeFirst(bgAdvice)}.`; break;
+      case 'es': line = `${stripTrailingDot(lunarDayNote)}, con un pico exacto de fondo: ${uncapitalizeFirst(bgAdvice)}.`; break;
+      case 'de': line = `${stripTrailingDot(lunarDayNote)}, begleitet von einem exakten Hintergrund-Höhepunkt: ${bgAdvice}.`; break;
+      case 'fr': line = `${stripTrailingDot(lunarDayNote)}, avec un pic exact de fond : ${uncapitalizeFirst(bgAdvice)}.`; break;
+      default: line = `${stripTrailingDot(lunarDayNote)}, alongside an exact background peak: ${uncapitalizeFirst(bgAdvice)}.`; break;
+    }
+  } else if (lunarDayNote) {
+    line = lunarDayNote;
+  }
+
+  return {
+    isConflict: false,
+    line: [line, contrastSentence].filter(Boolean).join(' ')
+  };
 }
 
 function formatLunarDayBackdropLead(baseLang, ctx) {
@@ -749,6 +857,8 @@ function formatSpeechByLang(baseLang, parts) {
     ingressInfo,
     lunarDayNote,
     contrastSentence,
+    phaseKey,
+    activeLunarDay,
     zodiacHint,
     illuminationPct,
     firstDay,
@@ -866,29 +976,34 @@ function formatSpeechByLang(baseLang, parts) {
   const sentences = [];
   const signPhrase = speechSignLead(baseLang);
   const sep = ingressInfo ? (baseLang === 'ru' ? ': ' : baseLang === 'es' ? ', ' : '; ') : ' ';
+  const lunarSpeechBlock = buildLunarBackdropSpeechLine(baseLang, {
+    lunarDaySpeech,
+    lunarDayNote,
+    phaseKey,
+    activeLunarDay,
+    bgAdvice,
+    contrastSentence
+  });
+  const includeBridge = Boolean(bridgeText && !lunarSpeechBlock.isConflict);
+
   switch (baseLang) {
     case 'ru':
       sentences.push(`На календаре ${lunarDaySpeech}, ${uncapitalizeFirst(trendLabel)}${sep}${signPhrase}.`);
       sentences.push(phaseVariantLine || `Идёт ${dayInPhase}-й день этапа «${phaseTitle}».`);
       if (roleTone) sentences.push(roleTone);
       if (dayThemeFocus) sentences.push(dayThemeFocus);
-      if (bridgeText) sentences.push(bridgeText);
+      if (includeBridge) sentences.push(bridgeText);
       if (edgeInfo) {
         const dynMap = {
-          exact: 'пик влияния приходится именно на сегодня',
-          applying: 'тенденция постепенно набирает силу',
-          separating: 'пик уже пройден, и напряжение спадает'
+          exact: 'Пик этой тенденции приходится на сегодня.',
+          applying: 'Эта тенденция постепенно усиливается.',
+          separating: 'Пик уже пройден, ситуация стабилизируется.'
         };
-        sentences.push(`В сфере «${uncapitalizeFirst(edgeInfo.actorTitle)}» ${uncapitalizeFirst(edgeInfo.advice)}, причём ${dynMap[edgeInfo.dynamicKey]}.`);
-      } else if (!bridgeText) {
+        sentences.push(`На первый план выходят ${uncapitalizeFirst(edgeInfo.actorTitle)}. ${ensureSentence(edgeInfo.advice)} ${dynMap[edgeInfo.dynamicKey]}`);
+      } else if (!includeBridge) {
         sentences.push(`Влияние знака ${getRuZodiacGenitive(canonicalSign, signName)} делает этот день удобным там, где важно ${zodiacHint}.`);
       }
-      if (bgAdvice) {
-        sentences.push(`${stripTrailingDot(lunarDayNote)}, а на длинной дистанции сегодня ощущается точный пик: ${uncapitalizeFirst(bgAdvice)}.`);
-      } else if (lunarDayNote) {
-        sentences.push(lunarDayNote);
-      }
-      if (contrastSentence) sentences.push(contrastSentence);
+      if (lunarSpeechBlock.line) sentences.push(lunarSpeechBlock.line);
       if (tip) sentences.push(tip);
       return sentences;
 
@@ -897,23 +1012,18 @@ function formatSpeechByLang(baseLang, parts) {
       sentences.push(phaseVariantLine || `Es el día ${dayInPhase} de la fase «${phaseTitle}».`);
       if (roleTone) sentences.push(roleTone);
       if (dayThemeFocus) sentences.push(dayThemeFocus);
-      if (bridgeText) sentences.push(bridgeText);
+      if (includeBridge) sentences.push(bridgeText);
       if (edgeInfo) {
         const dynMap = {
-          exact: 'el punto máximo cae hoy mismo',
-          applying: 'la tendencia va ganando fuerza',
-          separating: 'el pico ya pasó y la tensión disminuye'
+          exact: 'El punto máximo cae hoy mismo.',
+          applying: 'Esta tendencia va tomando fuerza.',
+          separating: 'El pico ya pasó y la tensión disminuye.'
         };
-        sentences.push(`En el ámbito «${uncapitalizeFirst(edgeInfo.actorTitle)}», ${uncapitalizeFirst(edgeInfo.advice)}, y ${dynMap[edgeInfo.dynamicKey]}.`);
-      } else if (!bridgeText) {
+        sentences.push(`En primer plano destacan ${edgeInfo.actorTitle.toLowerCase()}. ${ensureSentence(edgeInfo.advice)} ${dynMap[edgeInfo.dynamicKey]}`);
+      } else if (!includeBridge) {
         sentences.push(`La Luna en ${signName} favorece especialmente ${zodiacHint}.`);
       }
-      if (bgAdvice) {
-        sentences.push(`${stripTrailingDot(lunarDayNote)}, con un pico exacto de fondo: ${uncapitalizeFirst(bgAdvice)}.`);
-      } else if (lunarDayNote) {
-        sentences.push(lunarDayNote);
-      }
-      if (contrastSentence) sentences.push(contrastSentence);
+      if (lunarSpeechBlock.line) sentences.push(lunarSpeechBlock.line);
       if (tip) sentences.push(tip);
       return sentences;
 
@@ -922,23 +1032,18 @@ function formatSpeechByLang(baseLang, parts) {
       sentences.push(phaseVariantLine || `Es ist Tag ${dayInPhase} der Phase «${phaseTitle}».`);
       if (roleTone) sentences.push(roleTone);
       if (dayThemeFocus) sentences.push(dayThemeFocus);
-      if (bridgeText) sentences.push(bridgeText);
+      if (includeBridge) sentences.push(bridgeText);
       if (edgeInfo) {
         const dynMap = {
-          exact: 'der Höhepunkt liegt genau heute',
-          applying: 'der Einfluss nimmt zu',
-          separating: 'der Höhepunkt ist überschritten und die Lage beruhigt sich'
+          exact: 'Der Höhepunkt liegt genau heute.',
+          applying: 'Dieser Einfluss nimmt allmählich zu.',
+          separating: 'Der Höhepunkt ist überschritten und die Lage beruhigt sich.'
         };
-        sentences.push(`Im Bereich «${edgeInfo.actorTitle}» gilt: ${edgeInfo.advice}, wobei ${dynMap[edgeInfo.dynamicKey]}.`);
-      } else if (!bridgeText) {
+        sentences.push(`Im Vordergrund stehen ${edgeInfo.actorTitle}. ${ensureSentence(edgeInfo.advice)} ${dynMap[edgeInfo.dynamicKey]}`);
+      } else if (!includeBridge) {
         sentences.push(`Der Mond im Zeichen ${signName} unterstützt besonders ${zodiacHint}.`);
       }
-      if (bgAdvice) {
-        sentences.push(`${stripTrailingDot(lunarDayNote)}, begleitet von einem exakten Hintergrund-Höhepunkt: ${bgAdvice}.`);
-      } else if (lunarDayNote) {
-        sentences.push(lunarDayNote);
-      }
-      if (contrastSentence) sentences.push(contrastSentence);
+      if (lunarSpeechBlock.line) sentences.push(lunarSpeechBlock.line);
       if (tip) sentences.push(tip);
       return sentences;
 
@@ -947,23 +1052,18 @@ function formatSpeechByLang(baseLang, parts) {
       sentences.push(phaseVariantLine || `Nous sommes au jour ${dayInPhase} de la phase « ${phaseTitle} ».`);
       if (roleTone) sentences.push(roleTone);
       if (dayThemeFocus) sentences.push(dayThemeFocus);
-      if (bridgeText) sentences.push(bridgeText);
+      if (includeBridge) sentences.push(bridgeText);
       if (edgeInfo) {
         const dynMap = {
-          exact: 'le pic tombe aujourd\'hui même',
-          applying: 'l\'influence monte en puissance',
-          separating: 'le pic est passé et la tension retombe'
+          exact: 'Le pic tombe aujourd\'hui même.',
+          applying: 'Cette tendance monte progressivement.',
+          separating: 'Le pic est passé et la tension retombe.'
         };
-        sentences.push(`Dans le domaine « ${uncapitalizeFirst(edgeInfo.actorTitle)} », ${uncapitalizeFirst(edgeInfo.advice)}, et ${dynMap[edgeInfo.dynamicKey]}.`);
-      } else if (!bridgeText) {
+        sentences.push(`Au premier plan figurent ${edgeInfo.actorTitle.toLowerCase()}. ${ensureSentence(edgeInfo.advice)} ${dynMap[edgeInfo.dynamicKey]}`);
+      } else if (!includeBridge) {
         sentences.push(`La Lune en ${signName} favorise particulièrement ${zodiacHint}.`);
       }
-      if (bgAdvice) {
-        sentences.push(`${stripTrailingDot(lunarDayNote)}, avec un pic exact de fond : ${uncapitalizeFirst(bgAdvice)}.`);
-      } else if (lunarDayNote) {
-        sentences.push(lunarDayNote);
-      }
-      if (contrastSentence) sentences.push(contrastSentence);
+      if (lunarSpeechBlock.line) sentences.push(lunarSpeechBlock.line);
       if (tip) sentences.push(tip);
       return sentences;
 
@@ -972,23 +1072,18 @@ function formatSpeechByLang(baseLang, parts) {
       sentences.push(phaseVariantLine || `You are on day ${dayInPhase} of the "${phaseTitle}" phase.`);
       if (roleTone) sentences.push(roleTone);
       if (dayThemeFocus) sentences.push(dayThemeFocus);
-      if (bridgeText) sentences.push(bridgeText);
+      if (includeBridge) sentences.push(bridgeText);
       if (edgeInfo) {
         const dynMap = {
-          exact: 'peak intensity lands today',
-          applying: 'this influence is steadily building',
-          separating: 'the peak has passed and tension is easing'
+          exact: 'Peak intensity lands today.',
+          applying: 'This trend is steadily building.',
+          separating: 'The peak has passed and tension is easing.'
         };
-        sentences.push(`In "${edgeInfo.actorTitle}", ${uncapitalizeFirst(edgeInfo.advice)}, while ${dynMap[edgeInfo.dynamicKey]}.`);
-      } else if (!bridgeText) {
+        sentences.push(`At the forefront are ${edgeInfo.actorTitle.toLowerCase()}. ${ensureSentence(edgeInfo.advice)} ${dynMap[edgeInfo.dynamicKey]}`);
+      } else if (!includeBridge) {
         sentences.push(`Moon in ${signName} especially supports ${zodiacHint}.`);
       }
-      if (bgAdvice) {
-        sentences.push(`${stripTrailingDot(lunarDayNote)}, alongside an exact background peak: ${uncapitalizeFirst(bgAdvice)}.`);
-      } else if (lunarDayNote) {
-        sentences.push(lunarDayNote);
-      }
-      if (contrastSentence) sentences.push(contrastSentence);
+      if (lunarSpeechBlock.line) sentences.push(lunarSpeechBlock.line);
       if (tip) sentences.push(tip);
       return sentences;
   }
@@ -1094,6 +1189,8 @@ function buildBriefingSpeechText() {
     ingressInfo,
     lunarDayNote,
     contrastSentence,
+    phaseKey: personal.phaseKey,
+    activeLunarDay: summary.activeLunarDay,
     zodiacHint,
     phaseTitle: phase.title,
     dayInPhase: personal.phaseStage.dayInPhase,
@@ -1500,7 +1597,14 @@ function buildTodayIntroText(baseLang, ctx) {
   });
   const backdropLabel = labels?.label_calendar_backdrop || '';
   const resourceLabel = labels?.label_personal_resource || '';
-  const backdropText = [backdropLead, lunarNoteSentence, contrastSentence].filter(Boolean).join(' ');
+  const backdropText = formatCalendarBackdropText(baseLang, {
+    isPersonal,
+    phaseKey,
+    activeLunarDay,
+    backdropLead,
+    lunarNoteSentence,
+    contrastSentence
+  });
 
   if (!isPersonal) {
     let mainText = '';
