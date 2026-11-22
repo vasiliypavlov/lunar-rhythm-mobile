@@ -58,7 +58,7 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Установка зависимостей
-        run: npm ci --no-audit --no-fund
+        run: npm install
 
       - name: Инициализация Android-платформы
         run: |
