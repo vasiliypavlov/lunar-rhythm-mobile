@@ -1,0 +1,745 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 1200 720"
+   width="1200"
+   height="720"
+   font-family="DejaVu Sans, Arial, sans-serif"
+   version="1.1"
+   id="svg50"
+   sodipodi:docname="01_sky_vs_rhythm_model.svg"
+   inkscape:version="1.3.2 (091e20e, 2023-11-25, custom)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview50"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.665"
+     inkscape:cx="581.95489"
+     inkscape:cy="287.21805"
+     inkscape:window-width="1872"
+     inkscape:window-height="1057"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g50" />
+  <defs
+     id="defs12">
+    <pattern
+       id="grid"
+       width="25"
+       height="25"
+       patternUnits="userSpaceOnUse">
+      <path
+         d="M 25 0 L 0 0 0 25"
+         fill="none"
+         stroke="#1E293B"
+         stroke-width="0.8"
+         id="path1" />
+    </pattern>
+    <marker
+       id="arrowAmber"
+       viewBox="0 0 10 10"
+       refX="8"
+       refY="5"
+       markerWidth="6"
+       markerHeight="6"
+       orient="auto-start-reverse">
+      <path
+         d="M 0 1 L 10 5 L 0 9 z"
+         fill="#F59E0B"
+         id="path2" />
+    </marker>
+    <marker
+       id="arrowBlue"
+       viewBox="0 0 10 10"
+       refX="8"
+       refY="5"
+       markerWidth="6"
+       markerHeight="6"
+       orient="auto-start-reverse">
+      <path
+         d="M 0 1 L 10 5 L 0 9 z"
+         fill="#38BDF8"
+         id="path3" />
+    </marker>
+    <marker
+       id="arrowSlate"
+       viewBox="0 0 10 10"
+       refX="8"
+       refY="5"
+       markerWidth="6"
+       markerHeight="6"
+       orient="auto-start-reverse">
+      <path
+         d="M 0 1 L 10 5 L 0 9 z"
+         fill="#94A3B8"
+         id="path4" />
+    </marker>
+    <linearGradient
+       id="amberGrad"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="0">
+      <stop
+         offset="0%"
+         stop-color="#F59E0B"
+         stop-opacity="0.28"
+         id="stop4" />
+      <stop
+         offset="100%"
+         stop-color="#F59E0B"
+         stop-opacity="0.10"
+         id="stop5" />
+    </linearGradient>
+    <linearGradient
+       id="blueGrad"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="0">
+      <stop
+         offset="0%"
+         stop-color="#38BDF8"
+         stop-opacity="0.24"
+         id="stop6" />
+      <stop
+         offset="100%"
+         stop-color="#38BDF8"
+         stop-opacity="0.08"
+         id="stop7" />
+    </linearGradient>
+    <radialGradient
+       id="earthGrad"
+       cx="40%"
+       cy="40%"
+       r="60%">
+      <stop
+         offset="0%"
+         stop-color="#38BDF8"
+         id="stop8" />
+      <stop
+         offset="65%"
+         stop-color="#0284C7"
+         id="stop9" />
+      <stop
+         offset="100%"
+         stop-color="#0F172A"
+         id="stop10" />
+    </radialGradient>
+    <radialGradient
+       id="sunGlow"
+       cx="50%"
+       cy="50%"
+       r="50%">
+      <stop
+         offset="0%"
+         stop-color="#F59E0B"
+         stop-opacity="0.35"
+         id="stop11" />
+      <stop
+         offset="100%"
+         stop-color="#F59E0B"
+         stop-opacity="0"
+         id="stop12" />
+    </radialGradient>
+  </defs>
+  <rect
+     width="1200"
+     height="720"
+     fill="#0B132B"
+     id="rect12" />
+  <rect
+     width="1200"
+     height="720"
+     fill="url(#grid)"
+     id="rect13" />
+  <!-- TOP LAYER: ASTRONOMICAL REALITY -->
+  <text
+     x="50"
+     y="48"
+     fill="#F8FAFC"
+     font-size="20"
+     font-weight="700"
+     letter-spacing="0.5"
+     id="text13">1. АСТРОНОМИЧЕСКАЯ РЕАЛЬНОСТЬ (ФИЗИКА НЕБА)</text>
+  <text
+     x="50"
+     y="72"
+     fill="#94A3B8"
+     font-size="13"
+     id="text14">Объективные параметры для всех наблюдателей: элонгация, освещённость диска, восход/заход и цикл 29,53 суток</text>
+  <!-- Sun on Left -->
+  <circle
+     cx="80"
+     cy="210"
+     r="140"
+     fill="url(#sunGlow)"
+     id="circle14" />
+  <circle
+     cx="40"
+     cy="210"
+     r="68"
+     fill="#F59E0B"
+     opacity="0.18"
+     stroke="#F59E0B"
+     stroke-width="2"
+     id="circle15" />
+  <text
+     x="52"
+     y="215"
+     fill="#FCD34D"
+     font-size="15"
+     font-weight="700"
+     id="text15">СОЛНЦЕ</text>
+  <!-- Sunlight rays -->
+  <line
+     x1="120"
+     y1="145"
+     x2="360"
+     y2="145"
+     stroke="#F59E0B"
+     stroke-width="1.2"
+     stroke-dasharray="5,5"
+     marker-end="url(#arrowAmber)"
+     opacity="0.7"
+     id="line15" />
+  <line
+     x1="120"
+     y1="210"
+     x2="360"
+     y2="210"
+     stroke="#F59E0B"
+     stroke-width="1.2"
+     stroke-dasharray="5,5"
+     marker-end="url(#arrowAmber)"
+     opacity="0.7"
+     id="line16" />
+  <line
+     x1="120"
+     y1="275"
+     x2="360"
+     y2="275"
+     stroke="#F59E0B"
+     stroke-width="1.2"
+     stroke-dasharray="5,5"
+     marker-end="url(#arrowAmber)"
+     opacity="0.7"
+     id="line17" />
+  <!-- Earth & Lunar Orbit (Centered at 650, 210) -->
+  <ellipse
+     cx="650"
+     cy="210"
+     rx="220"
+     ry="95"
+     fill="none"
+     stroke="#475569"
+     stroke-width="1.5"
+     id="ellipse17" />
+  <path
+     d="M 835 155 A 220 95 0 0 0 740 122"
+     fill="none"
+     stroke="#38BDF8"
+     stroke-width="2"
+     marker-end="url(#arrowBlue)"
+     id="path17" />
+  <text
+     x="825"
+     y="112"
+     fill="#38BDF8"
+     font-size="13"
+     font-weight="700"
+     id="text17">Синодический месяц: ~29,53 суток</text>
+  <!-- Earth -->
+  <circle
+     cx="650"
+     cy="210"
+     r="26"
+     fill="url(#earthGrad)"
+     stroke="#7DD3FC"
+     stroke-width="1.5"
+     id="circle17" />
+  <path
+     d="M 650 184 A 26 26 0 0 1 650 236 Z"
+     fill="#090D16"
+     opacity="0.75"
+     id="path18" />
+  <text
+     x="650"
+     y="254"
+     fill="#E2E8F0"
+     font-size="12"
+     font-weight="700"
+     text-anchor="middle"
+     id="text18">ЗЕМЛЯ</text>
+  <!-- Horizon tangent line -->
+  <line
+     x1="550"
+     y1="184"
+     x2="750"
+     y2="184"
+     stroke="#94A3B8"
+     stroke-width="1"
+     stroke-dasharray="3,3"
+     id="line18" />
+  <text
+     x="545"
+     y="180"
+     fill="#94A3B8"
+     font-size="11"
+     text-anchor="end"
+     id="text19">Линия горизонта (Восход / Заход)</text>
+  <!-- Elongation angle visualization -->
+  <line
+     x1="650"
+     y1="210"
+     x2="430"
+     y2="210"
+     stroke="#F59E0B"
+     stroke-width="1.2"
+     stroke-dasharray="4,4"
+     id="line19" />
+  <line
+     x1="650"
+     y1="210"
+     x2="495"
+     y2="278"
+     stroke="#38BDF8"
+     stroke-width="1.5"
+     id="line20" />
+  <path
+     d="M 575 210 A 75 75 0 0 0 595 262"
+     fill="none"
+     stroke="#F59E0B"
+     stroke-width="2"
+     id="path20" />
+  <text
+     x="530"
+     y="236"
+     fill="#FCD34D"
+     font-size="12"
+     font-weight="700"
+     text-anchor="end"
+     id="text20">Элонгация (0°–360°)</text>
+  <!-- New Moon (Left) -->
+  <circle
+     cx="430"
+     cy="210"
+     r="14"
+     fill="#0F172A"
+     stroke="#94A3B8"
+     stroke-width="1.5"
+     id="circle20" />
+  <text
+     x="410"
+     y="214"
+     fill="#94A3B8"
+     font-size="12"
+     font-weight="600"
+     text-anchor="end"
+     id="text21">Новолуние (0°)</text>
+  <!-- Waxing Moon (Bottom-Left) -->
+  <g
+     transform="translate(495, 278)"
+     id="g21">
+    <circle
+       cx="0"
+       cy="0"
+       r="14"
+       fill="#0F172A"
+       stroke="#38BDF8"
+       stroke-width="1.5"
+       id="circle21" />
+    <path
+       d="M 0 -14 A 14 14 0 0 0 0 14 A 6 14 0 0 1 0 -14 Z"
+       fill="#E2E8F0"
+       id="path21" />
+  </g>
+  <text
+     x="475"
+     y="302"
+     fill="#7DD3FC"
+     font-size="11"
+     text-anchor="end"
+     id="text22">Освещённость диска</text>
+  <!-- First Quarter (Bottom) -->
+  <g
+     transform="translate(650, 305)"
+     id="g22">
+    <circle
+       cx="0"
+       cy="0"
+       r="14"
+       fill="#0F172A"
+       stroke="#94A3B8"
+       stroke-width="1.5"
+       id="circle22" />
+    <path
+       d="M 0 -14 A 14 14 0 0 0 0 14 Z"
+       fill="#E2E8F0"
+       id="path22" />
+  </g>
+  <text
+     x="650"
+     y="334"
+     fill="#94A3B8"
+     font-size="11"
+     text-anchor="middle"
+     id="text23">Первая четверть (90°)</text>
+  <!-- Full Moon (Right) -->
+  <circle
+     cx="870"
+     cy="210"
+     r="14"
+     fill="#E2E8F0"
+     stroke="#F59E0B"
+     stroke-width="2"
+     id="circle23" />
+  <text
+     x="892"
+     y="214"
+     fill="#F8FAFC"
+     font-size="12"
+     font-weight="600"
+     id="text24">Полнолуние (180°)</text>
+  <!-- Last Quarter (Top) -->
+  <g
+     transform="translate(650, 115)"
+     id="g24">
+    <circle
+       cx="0"
+       cy="0"
+       r="14"
+       fill="#0F172A"
+       stroke="#94A3B8"
+       stroke-width="1.5"
+       id="circle24" />
+    <path
+       d="M 0 -14 A 14 14 0 0 0 0 14 Z"
+       fill="#E2E8F0"
+       id="path24" />
+  </g>
+  <text
+     x="650"
+     y="93"
+     fill="#94A3B8"
+     font-size="11"
+     text-anchor="middle"
+     id="text25">Последняя четверть (270°)</text>
+  <!-- DIVIDER -->
+  <line
+     x1="50"
+     y1="365"
+     x2="1150"
+     y2="365"
+     stroke="#334155"
+     stroke-width="1.5"
+     stroke-dasharray="8,6"
+     id="line25" />
+  <!-- BOTTOM LAYER: APPLIED RHYTHM MODEL -->
+  <text
+     x="50"
+     y="405"
+     fill="#F8FAFC"
+     font-size="20"
+     font-weight="700"
+     letter-spacing="0.5"
+     id="text26">2. ПРИКЛАДНАЯ МОДЕЛЬ РИТМОВ (ПЕРСОНАЛЬНЫЙ ЦИКЛ)</text>
+  <text
+     x="50"
+     y="429"
+     fill="#94A3B8"
+     font-size="13"
+     id="text27">Индивидуальная разметка 29,5 дней от натальной фазы рождения + оценка лунных суток и дневных ролей</text>
+  <!-- Left: Birth Anchor Wheel -->
+  <g
+     transform="translate(175, 565)"
+     id="g32">
+    <circle
+       cx="0"
+       cy="0"
+       r="78"
+       fill="#111C3A"
+       stroke="#475569"
+       stroke-width="1.5"
+       id="circle27" />
+    <circle
+       cx="0"
+       cy="0"
+       r="52"
+       fill="none"
+       stroke="#334155"
+       stroke-width="1"
+       stroke-dasharray="3,3"
+       id="circle28" />
+    <line
+       x1="-78"
+       y1="0"
+       x2="78"
+       y2="0"
+       stroke="#334155"
+       stroke-width="1"
+       id="line28" />
+    <line
+       x1="0"
+       y1="-78"
+       x2="0"
+       y2="78"
+       stroke="#334155"
+       stroke-width="1"
+       id="line29" />
+    <line
+       x1="0"
+       y1="0"
+       x2="55"
+       y2="-55"
+       stroke="#F59E0B"
+       stroke-width="2.5"
+       id="line30" />
+    <circle
+       cx="55"
+       cy="-55"
+       r="8"
+       fill="#F59E0B"
+       id="circle30" />
+    <text
+       x="0"
+       y="-92"
+       fill="#F59E0B"
+       font-size="12"
+       font-weight="700"
+       text-anchor="middle"
+       id="text30">ТОЧКА РОЖДЕНИЯ (0°)</text>
+    <text
+       x="0"
+       y="102"
+       fill="#94A3B8"
+       font-size="11"
+       text-anchor="middle"
+       id="text31">Натальный возраст Луны</text>
+    <text
+       x="0"
+       y="117"
+       fill="#94A3B8"
+       font-size="11"
+       text-anchor="middle"
+       id="text32">(birthMoonAge)</text>
+  </g>
+  <!-- Connector Arrow -->
+  <line
+     x1="275"
+     y1="565"
+     x2="345"
+     y2="565"
+     stroke="#F59E0B"
+     stroke-width="2"
+     marker-end="url(#arrowAmber)"
+     id="line32" />
+  <!-- Right: 29.5-Day Personal Wave -->
+  <g
+     transform="translate(370, 465)"
+     id="g50">
+    <line
+       x1="0"
+       y1="105"
+       x2="760"
+       y2="105"
+       stroke="#475569"
+       stroke-width="1.5"
+       id="line33" />
+    <rect
+       x="0"
+       y="25"
+       width="190"
+       height="160"
+       fill="#38BDF8"
+       opacity="0.06"
+       id="rect33" />
+    <rect
+       x="190"
+       y="25"
+       width="190"
+       height="160"
+       fill="#F59E0B"
+       opacity="0.10"
+       id="rect34" />
+    <rect
+       x="380"
+       y="25"
+       width="190"
+       height="160"
+       fill="#94A3B8"
+       opacity="0.06"
+       id="rect35" />
+    <rect
+       x="570"
+       y="25"
+       width="190"
+       height="160"
+       fill="#1E293B"
+       opacity="0.35"
+       id="rect36" />
+    <line
+       x1="190"
+       y1="25"
+       x2="190"
+       y2="185"
+       stroke="#334155"
+       stroke-width="1"
+       stroke-dasharray="4,4"
+       id="line36" />
+    <line
+       x1="380"
+       y1="25"
+       x2="380"
+       y2="185"
+       stroke="#334155"
+       stroke-width="1"
+       stroke-dasharray="4,4"
+       id="line37" />
+    <line
+       x1="570"
+       y1="25"
+       x2="570"
+       y2="185"
+       stroke="#334155"
+       stroke-width="1"
+       stroke-dasharray="4,4"
+       id="line38" />
+    <line
+       x1="760"
+       y1="25"
+       x2="760"
+       y2="185"
+       stroke="#334155"
+       stroke-width="1"
+       id="line39" />
+    <path
+       d="M 0 105 C 95 105, 190 38, 285 38 C 380 38, 425 105, 475 105 C 525 105, 570 172, 665 172 C 715 172, 740 130, 760 105"
+       fill="none"
+       stroke="#F59E0B"
+       stroke-width="3"
+       id="path39" />
+    <circle
+       cx="285"
+       cy="38"
+       r="6"
+       fill="#F59E0B"
+       id="circle39" />
+    <text
+       x="285"
+       y="2.1152344"
+       fill="#fcd34d"
+       font-size="12px"
+       font-weight="700"
+       text-anchor="middle"
+       id="text39"><tspan
+         sodipodi:role="line"
+         id="tspan50"
+         x="285"
+         y="2.1152344">ЛИЧНЫЙ ПИК</tspan><tspan
+         sodipodi:role="line"
+         id="tspan51"
+         x="285"
+         y="17.115234">(Возврат к фазе рождения)</tspan></text>
+    <circle
+       cx="665"
+       cy="172"
+       r="6"
+       fill="#38BDF8"
+       id="circle40" />
+    <text
+       x="665"
+       y="196"
+       fill="#7DD3FC"
+       font-size="12"
+       font-weight="700"
+       text-anchor="middle"
+       id="text40">МИНИМУМ (+14,8 дн.)</text>
+    <text
+       x="95"
+       y="9"
+       fill="#7dd3fc"
+       font-size="12px"
+       font-weight="700"
+       text-anchor="middle"
+       id="text41">1. РАЗГОН (~7,4 дн.)</text>
+    <text
+       x="285"
+       y="62"
+       fill="#F59E0B"
+       font-size="12"
+       font-weight="700"
+       text-anchor="middle"
+       id="text42">2. ПИК (~7,4 дн.)</text>
+    <text
+       x="475"
+       y="9"
+       fill="#cbd5e1"
+       font-size="12px"
+       font-weight="700"
+       text-anchor="middle"
+       id="text43">3. СПАД (~7,4 дн.)</text>
+    <text
+       x="665"
+       y="9"
+       fill="#94a3b8"
+       font-size="12px"
+       font-weight="700"
+       text-anchor="middle"
+       id="text44">4. МИНИМУМ (~7,4 дн.)</text>
+    <text
+       x="0"
+       y="218"
+       fill="#E2E8F0"
+       font-size="11"
+       font-weight="600"
+       text-anchor="middle"
+       id="text45">День 0</text>
+    <text
+       x="190"
+       y="218"
+       fill="#94A3B8"
+       font-size="11"
+       text-anchor="middle"
+       id="text46">День 7,4</text>
+    <text
+       x="380"
+       y="218"
+       fill="#94A3B8"
+       font-size="11"
+       text-anchor="middle"
+       id="text47">День 14,8</text>
+    <text
+       x="570"
+       y="218"
+       fill="#94A3B8"
+       font-size="11"
+       text-anchor="middle"
+       id="text48">День 22,1</text>
+    <text
+       x="760"
+       y="218"
+       fill="#E2E8F0"
+       font-size="11"
+       font-weight="600"
+       text-anchor="middle"
+       id="text49">День 29,5</text>
+    <text
+       x="380"
+       y="242"
+       fill="#cbd5e1"
+       font-size="11px"
+       font-weight="600"
+       text-anchor="middle"
+       id="text50">Дневные сценарии (транзиты + лунные сутки): Спринт • Прорыв • Диалог • Ответственность • Автономный режим</text>
+  </g>
+</svg>

@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" width="1200" height="680" font-family="DejaVu Sans, Arial, sans-serif">
+  
+  <defs>
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#1E293B" stroke-width="0.8"/>
+    </pattern>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#F59E0B"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#38BDF8"/>
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="680" fill="#0B132B"/>
+  <rect width="1200" height="680" fill="url(#grid)"/>
+
+  <!-- Header -->
+  <text x="50" y="44" fill="#F8FAFC" font-size="19" font-weight="700">ПЕРСОНАЛЬНЫЙ «НОЛЬ» ЦИКЛА И 4 ФАЗЫ НАГРУЗКИ</text>
+  <text x="50" y="66" fill="#94A3B8" font-size="12.5">Луна на небе одна для всех, но дата рождения задаёт индивидуальный сдвиг отсчёта в 29,5-дневном месяце</text>
+
+  <!-- TOP SHARED SKY BANNER -->
+  <g transform="translate(50, 90)">
+    <rect x="0" y="0" width="1100" height="96" rx="10" fill="#111C3A" stroke="#38BDF8" stroke-width="1.5"/>
+    <!-- Moon icon -->
+    <circle cx="62" cy="48" r="24" fill="#0F172A" stroke="#38BDF8" stroke-width="1.5"/>
+    <path d="M 62 24 A 24 24 0 0 1 62 72 A 10 24 0 0 0 62 24 Z" fill="#E2E8F0"/>
+    <text x="106" y="38" fill="#38BDF8" font-size="14" font-weight="700">ЕДИНЫЙ АСТРОНОМИЧЕСКИЙ ФОН НЕБА (СЕГОДНЯ)</text>
+    <text x="106" y="60" fill="#E2E8F0" font-size="12.5">Текущий возраст Луны на небе: 5,2 суток (Растущий серп, освещённость ~28%)</text>
+    <text x="106" y="79" fill="#94A3B8" font-size="11.5">Физически одинаков для всех людей, но попадает в разные точки их личного цикла</text>
+  </g>
+
+  <!-- Projection lines down to User A and User B -->
+  <line x1="325" y1="186" x2="325" y2="235" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrowBlue)"/>
+  <line x1="875" y1="186" x2="875" y2="235" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrowBlue)"/>
+
+  <!-- LEFT CARD: USER A (Current sky = PEAK) -->
+  <g transform="translate(50, 245)">
+    <rect x="0" y="0" width="530" height="395" rx="10" fill="#111C3A" stroke="#F59E0B" stroke-width="1.6"/>
+    <text x="24" y="34" fill="#F8FAFC" font-size="15" font-weight="700">ПОЛЬЗОВАТЕЛЬ А</text>
+    <text x="24" y="54" fill="#94A3B8" font-size="12">Рождён при возрасте Луны ~5,0 дн. (Растущий серп)</text>
+
+    <!-- Wheel centered at (165, 215), r=110 -->
+    <g transform="translate(165, 215)">
+      <!-- 4 Quadrants -->
+      <path d="M 0 0 L 0 -110 A 110 110 0 0 1 110 0 Z" fill="#F59E0B" opacity="0.22" stroke="#F59E0B" stroke-width="1.5"/>
+      <path d="M 0 0 L 110 0 A 110 110 0 0 1 0 110 Z" fill="#94A3B8" opacity="0.08" stroke="#475569" stroke-width="1"/>
+      <path d="M 0 0 L 0 110 A 110 110 0 0 1 -110 0 Z" fill="#1E293B" opacity="0.35" stroke="#475569" stroke-width="1"/>
+      <path d="M 0 0 L -110 0 A 110 110 0 0 1 0 -110 Z" fill="#38BDF8" opacity="0.10" stroke="#475569" stroke-width="1"/>
+
+      <circle cx="0" cy="0" r="36" fill="#0B132B" stroke="#334155" stroke-width="1"/>
+      <text x="0" y="4" fill="#E2E8F0" font-size="10.5" font-weight="700" text-anchor="middle">29,5 дн.</text>
+
+      <!-- Quadrant Labels -->
+      <text x="56" y="-44" fill="#FCD34D" font-size="11.5" font-weight="700" text-anchor="middle">ПИК</text>
+      <text x="56" y="54" fill="#CBD5E1" font-size="11" font-weight="600" text-anchor="middle">СПАД</text>
+      <text x="-56" y="54" fill="#94A3B8" font-size="11" font-weight="600" text-anchor="middle">МИНИМУМ</text>
+      <text x="-56" y="-44" fill="#7DD3FC" font-size="11" font-weight="600" text-anchor="middle">РАЗГОН</text>
+
+      <!-- Birth Anchor (0 deg = top) -->
+      <line x1="0" y1="-36" x2="0" y2="-118" stroke="#F59E0B" stroke-width="2"/>
+      <circle cx="0" cy="-110" r="6" fill="#F59E0B"/>
+      <text x="0" y="-124" fill="#F59E0B" font-size="10.5" font-weight="700" text-anchor="middle">Личный «0» (рождение)</text>
+
+      <!-- Current Sky Pointer (inside PEAK) -->
+      <circle cx="28" cy="-106" r="7" fill="#38BDF8" stroke="#0B132B" stroke-width="1.5"/>
+    </g>
+
+    <!-- Right status block inside Card A -->
+    <g transform="translate(305, 115)">
+      <rect x="0" y="0" width="200" height="195" rx="8" fill="#0B132B" stroke="#F59E0B" stroke-width="1.2"/>
+      <text x="14" y="28" fill="#F59E0B" font-size="12" font-weight="700">СЕГОДНЯ: ФАЗА «ПИК»</text>
+      <text x="14" y="48" fill="#E2E8F0" font-size="11">Луна вернулась к своей</text>
+      <text x="14" y="64" fill="#E2E8F0" font-size="11">фазе в момент рождения.</text>
+      <line x1="14" y1="78" x2="186" y2="78" stroke="#1E293B" stroke-width="1"/>
+      <text x="14" y="98" fill="#FCD34D" font-size="11" font-weight="700">Фокус планирования:</text>
+      <text x="14" y="116" fill="#CBD5E1" font-size="10.5">• Сложные запуски</text>
+      <text x="14" y="133" fill="#CBD5E1" font-size="10.5">• Ключевые переговоры</text>
+      <text x="14" y="150" fill="#CBD5E1" font-size="10.5">• Максимальная отдача</text>
+      <text x="14" y="176" fill="#94A3B8" font-size="10">Отрезок: ~7,4 суток</text>
+    </g>
+  </g>
+
+  <!-- RIGHT CARD: USER B (Current sky = MINIMUM) -->
+  <g transform="translate(620, 245)">
+    <rect x="0" y="0" width="530" height="395" rx="10" fill="#111C3A" stroke="#38BDF8" stroke-width="1.6"/>
+    <text x="24" y="34" fill="#F8FAFC" font-size="15" font-weight="700">ПОЛЬЗОВАТЕЛЬ Б</text>
+    <text x="24" y="54" fill="#94A3B8" font-size="12">Рождён при возрасте Луны ~19,8 дн. (Убывающая Луна)</text>
+
+    <!-- Wheel centered at (165, 215), r=110 (Rotated by 180 deg!) -->
+    <g transform="translate(165, 215)">
+      <path d="M 0 0 L 0 -110 A 110 110 0 0 1 110 0 Z" fill="#38BDF8" opacity="0.20" stroke="#38BDF8" stroke-width="1.5"/>
+      <path d="M 0 0 L 110 0 A 110 110 0 0 1 0 110 Z" fill="#38BDF8" opacity="0.08" stroke="#475569" stroke-width="1"/>
+      <path d="M 0 0 L 0 110 A 110 110 0 0 1 -110 0 Z" fill="#F59E0B" opacity="0.14" stroke="#475569" stroke-width="1"/>
+      <path d="M 0 0 L -110 0 A 110 110 0 0 1 0 -110 Z" fill="#94A3B8" opacity="0.08" stroke="#475569" stroke-width="1"/>
+
+      <circle cx="0" cy="0" r="36" fill="#0B132B" stroke="#334155" stroke-width="1"/>
+      <text x="0" y="4" fill="#E2E8F0" font-size="10.5" font-weight="700" text-anchor="middle">29,5 дн.</text>
+
+      <!-- Quadrant Labels -->
+      <text x="56" y="-44" fill="#7DD3FC" font-size="11.5" font-weight="700" text-anchor="middle">МИНИМУМ</text>
+      <text x="56" y="54" fill="#CBD5E1" font-size="11" font-weight="600" text-anchor="middle">РАЗГОН</text>
+      <text x="-56" y="54" fill="#FCD34D" font-size="11" font-weight="600" text-anchor="middle">ПИК</text>
+      <text x="-56" y="-44" fill="#94A3B8" font-size="11" font-weight="600" text-anchor="middle">СПАД</text>
+
+      <!-- Birth Anchor at Bottom (+14.8 days away) -->
+      <line x1="0" y1="36" x2="0" y2="118" stroke="#F59E0B" stroke-width="2"/>
+      <circle cx="0" cy="110" r="6" fill="#F59E0B"/>
+      <text x="0" y="134" fill="#F59E0B" font-size="10.5" font-weight="700" text-anchor="middle">Личный «0» (+14,8 дн.)</text>
+
+      <!-- Current Sky Pointer (inside MINIMUM) -->
+      <circle cx="28" cy="-106" r="7" fill="#38BDF8" stroke="#0B132B" stroke-width="1.5"/>
+    </g>
+
+    <!-- Right status block inside Card B -->
+    <g transform="translate(305, 115)">
+      <rect x="0" y="0" width="200" height="195" rx="8" fill="#0B132B" stroke="#38BDF8" stroke-width="1.2"/>
+      <text x="14" y="28" fill="#38BDF8" font-size="12" font-weight="700">СЕГОДНЯ: «МИНИМУМ»</text>
+      <text x="14" y="48" fill="#E2E8F0" font-size="11">Противофаза (~14,8 дн. от</text>
+      <text x="14" y="64" fill="#E2E8F0" font-size="11">натального возраста Луны).</text>
+      <line x1="14" y1="78" x2="186" y2="78" stroke="#1E293B" stroke-width="1"/>
+      <text x="14" y="98" fill="#7DD3FC" font-size="11" font-weight="700">Фокус планирования:</text>
+      <text x="14" y="116" fill="#CBD5E1" font-size="10.5">• Восстановление и сон</text>
+      <text x="14" y="133" fill="#CBD5E1" font-size="10.5">• Минимум обязательств</text>
+      <text x="14" y="150" fill="#CBD5E1" font-size="10.5">• Спокойная рутина</text>
+      <text x="14" y="176" fill="#94A3B8" font-size="10">Отрезок: ~7,4 суток</text>
+    </g>
+  </g>
+</svg>

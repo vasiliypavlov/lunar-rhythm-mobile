@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" width="1200" height="660" font-family="DejaVu Sans, Arial, sans-serif">
+  
+  <defs>
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#1E293B" stroke-width="0.8"/>
+    </pattern>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#F59E0B"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#38BDF8"/>
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="660" fill="#0B132B"/>
+  <rect width="1200" height="660" fill="url(#grid)"/>
+
+  <!-- Header -->
+  <text x="50" y="44" fill="#F8FAFC" font-size="19" font-weight="700">КАК ПРАКТИЧЕСКИ РАБОТАТЬ С ПРИЛОЖЕНИЕМ: 3 КОНТУРА ПЛАНИРОВАНИЯ</text>
+  <text x="50" y="66" fill="#94A3B8" font-size="12.5">Пошаговый алгоритм применения астрономических данных и личного ритма без эзотерики</text>
+
+  <!-- STEP 1: SKY CONTOUR -->
+  <g transform="translate(50, 96)">
+    <rect x="0" y="0" width="340" height="430" rx="12" fill="#111C3A" stroke="#38BDF8" stroke-width="1.6"/>
+    <rect x="20" y="20" width="84" height="24" rx="4" fill="#0284C7" opacity="0.35"/>
+    <text x="62" y="36" fill="#7DD3FC" font-size="11" font-weight="700" text-anchor="middle">КОНТУР 1</text>
+    <text x="20" y="70" fill="#F8FAFC" font-size="16" font-weight="700">Фон неба и гигиена сна</text>
+    <text x="20" y="90" fill="#94A3B8" font-size="11.5">Ориентир: текущая фаза на небе</text>
+    <line x1="20" y1="106" x2="320" y2="106" stroke="#1E293B" stroke-width="1.5"/>
+
+    <!-- Box 1.1 -->
+    <rect x="20" y="124" width="300" height="125" rx="8" fill="#0B132B" stroke="#F59E0B" stroke-width="1.2"/>
+    <text x="34" y="148" fill="#FCD34D" font-size="12" font-weight="700">За 3–5 ночей до полнолуния</text>
+    <text x="34" y="168" fill="#CBD5E1" font-size="11.5">Яркая Луна светит вечером и может</text>
+    <text x="34" y="185" fill="#CBD5E1" font-size="11.5">сдвигать засыпание (−20–25 мин сна):</text>
+    <text x="34" y="206" fill="#E2E8F0" font-size="11">• Приглушайте вечерний свет</text>
+    <text x="34" y="223" fill="#E2E8F0" font-size="11">• Убирайте поздний кофеин и экраны</text>
+
+    <!-- Box 1.2 -->
+    <rect x="20" y="268" width="300" height="136" rx="8" fill="#0B132B" stroke="#334155" stroke-width="1.2"/>
+    <text x="34" y="292" fill="#7DD3FC" font-size="12" font-weight="700">Оценка вечерней видимости</text>
+    <text x="34" y="313" fill="#CBD5E1" font-size="11.5">• Растущая Луна: яркие вечера,</text>
+    <text x="42" y="330" fill="#94A3B8" font-size="11">видна на западе после заката.</text>
+    <text x="34" y="352" fill="#CBD5E1" font-size="11.5">• Убывающая Луна: тёмные вечера,</text>
+    <text x="42" y="369" fill="#94A3B8" font-size="11">восходит позже ночью.</text>
+  </g>
+
+  <!-- Arrow 1 -> 2 -->
+  <line x1="396" y1="310" x2="424" y2="310" stroke="#38BDF8" stroke-width="2" marker-end="url(#arrowBlue)"/>
+
+  <!-- STEP 2: PERSONAL WAVE CONTOUR -->
+  <g transform="translate(430, 96)">
+    <rect x="0" y="0" width="340" height="430" rx="12" fill="#111C3A" stroke="#F59E0B" stroke-width="1.6"/>
+    <rect x="20" y="20" width="84" height="24" rx="4" fill="#F59E0B" opacity="0.22"/>
+    <text x="62" y="36" fill="#FCD34D" font-size="11" font-weight="700" text-anchor="middle">КОНТУР 2</text>
+    <text x="20" y="70" fill="#F8FAFC" font-size="16" font-weight="700">Личная фаза нагрузки</text>
+    <text x="20" y="90" fill="#94A3B8" font-size="11.5">Ориентир: 4 отрезка по ~7,4 суток</text>
+    <line x1="20" y1="106" x2="320" y2="106" stroke="#1E293B" stroke-width="1.5"/>
+
+    <!-- Phase 1-2: Acceleration & Peak -->
+    <rect x="20" y="124" width="300" height="86" rx="8" fill="#0B132B" stroke="#F59E0B" stroke-width="1.2"/>
+    <text x="34" y="147" fill="#F59E0B" font-size="12" font-weight="700">РАЗГОН и ПИК</text>
+    <text x="34" y="167" fill="#E2E8F0" font-size="11.5">Сложные старты, прорывные задачи,</text>
+    <text x="34" y="184" fill="#E2E8F0" font-size="11.5">переговоры и высокая интенсивность.</text>
+
+    <!-- Phase 3: Decline -->
+    <rect x="20" y="222" width="300" height="84" rx="8" fill="#0B132B" stroke="#38BDF8" stroke-width="1.2"/>
+    <text x="34" y="245" fill="#7DD3FC" font-size="12" font-weight="700">СПАД</text>
+    <text x="34" y="265" fill="#E2E8F0" font-size="11.5">Рутина, редактура, систематизация</text>
+    <text x="34" y="282" fill="#E2E8F0" font-size="11.5">документов и закрытие «хвостов».</text>
+
+    <!-- Phase 4: Minimum -->
+    <rect x="20" y="318" width="300" height="86" rx="8" fill="#0B132B" stroke="#475569" stroke-width="1.2"/>
+    <text x="34" y="341" fill="#94A3B8" font-size="12" font-weight="700">МИНИМУМ</text>
+    <text x="34" y="361" fill="#E2E8F0" font-size="11.5">Восстановление, разгрузка графика</text>
+    <text x="34" y="378" fill="#E2E8F0" font-size="11.5">и минимум жёстких обязательств.</text>
+  </g>
+
+  <!-- Arrow 2 -> 3 -->
+  <line x1="776" y1="310" x2="804" y2="310" stroke="#F59E0B" stroke-width="2" marker-end="url(#arrowAmber)"/>
+
+  <!-- STEP 3: DAILY WINDOWS & LATITUDE -->
+  <g transform="translate(810, 96)">
+    <rect x="0" y="0" width="340" height="430" rx="12" fill="#111C3A" stroke="#38BDF8" stroke-width="1.6"/>
+    <rect x="20" y="20" width="84" height="24" rx="4" fill="#0284C7" opacity="0.35"/>
+    <text x="62" y="36" fill="#7DD3FC" font-size="11" font-weight="700" text-anchor="middle">КОНТУР 3</text>
+    <text x="20" y="70" fill="#F8FAFC" font-size="16" font-weight="700">Срез дня и поправка</text>
+    <text x="20" y="90" fill="#94A3B8" font-size="11.5">Ориентир: восход Луны и окна суток</text>
+    <line x1="20" y1="106" x2="320" y2="106" stroke="#1E293B" stroke-width="1.5"/>
+
+    <!-- Box 3.1 -->
+    <rect x="20" y="124" width="300" height="132" rx="8" fill="#0B132B" stroke="#38BDF8" stroke-width="1.2"/>
+    <text x="34" y="148" fill="#7DD3FC" font-size="12" font-weight="700">Смотрите на время перехода</text>
+    <text x="34" y="168" fill="#CBD5E1" font-size="11.5">Не читайте «номер дня» вслепую —</text>
+    <text x="34" y="185" fill="#CBD5E1" font-size="11.5">проверяйте смену в момент восхода</text>
+    <text x="34" y="202" fill="#CBD5E1" font-size="11.5">Луны по трём окнам активности:</text>
+    <text x="34" y="226" fill="#F59E0B" font-size="12.5" font-weight="700">09:00   •   14:00   •   20:00</text>
+
+    <!-- Box 3.2 -->
+    <rect x="20" y="274" width="300" height="130" rx="8" fill="#0B132B" stroke="#334155" stroke-width="1.2"/>
+    <text x="34" y="298" fill="#FCD34D" font-size="12" font-weight="700">Поправка на широту 50,0° с.ш.</text>
+    <text x="34" y="319" fill="#CBD5E1" font-size="11.5">Если вы живёте заметно севернее</text>
+    <text x="34" y="336" fill="#CBD5E1" font-size="11.5">(Москва, СПб) или южнее 50° с.ш.,</text>
+    <text x="34" y="353" fill="#CBD5E1" font-size="11.5">сверяйте точный физический восход</text>
+    <text x="34" y="370" fill="#CBD5E1" font-size="11.5">Луны в локальном прогнозе.</text>
+  </g>
+
+  <!-- BOTTOM CALIBRATION BAR -->
+  <g transform="translate(50, 548)">
+    <rect x="0" y="0" width="1100" height="72" rx="10" fill="#111C3A" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="24" y="29" fill="#F59E0B" font-size="13" font-weight="700">ИТОГОВАЯ КАЛИБРОВКА ЗА 1–2 ЛУННЫХ МЕСЯЦА:</text>
+    <text x="24" y="51" fill="#E2E8F0" font-size="12">Приложение задаёт структурированную гипотезу ритма. Отмечайте дни высокой ясности, спада энергии и качества сна, чтобы откалибровать подсказки под себя.</text>
+  </g>
+</svg>
