@@ -574,6 +574,8 @@ export const DICT_EN = {
     "valence_neutral": "Focus",
     "today_course_heading": "Daily Course",
     "today_guest_heading": "Lunar Day Guide",
+    "label_personal_resource": "Your Capacity",
+    "label_calendar_backdrop": "Calendar Backdrop",
     "day_status_favorable": "Favorable",
     "day_status_caution": "With caution",
     "day_status_refrain": "Best to refrain",

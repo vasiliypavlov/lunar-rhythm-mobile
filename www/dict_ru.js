@@ -574,6 +574,8 @@ export const DICT_RU = {
     "valence_neutral": "Акцент",
     "today_course_heading": "Курс дня",
     "today_guest_heading": "Лунный курс дня",
+    "label_personal_resource": "Ваш ресурс",
+    "label_calendar_backdrop": "Календарный фон",
     "day_status_favorable": "Благоприятно",
     "day_status_caution": "С осторожностью",
     "day_status_refrain": "Лучше воздержаться",

@@ -574,6 +574,8 @@ export const DICT_ES = {
     "valence_neutral": "Enfoque",
     "today_course_heading": "Rumbo del día",
     "today_guest_heading": "Guía lunar del día",
+    "label_personal_resource": "Tu Recurso",
+    "label_calendar_backdrop": "Contexto del Calendario",
     "day_status_favorable": "Favorable",
     "day_status_caution": "Con cautela",
     "day_status_refrain": "Mejor abstenerse",

@@ -390,6 +390,205 @@ function stripTrailingDot(str) {
 
 const PASSIVE_PHASES = new Set(['phase_minimum', 'phase_decline']);
 const ACTIVE_ZODIAC_SIGNS = new Set(['Овен', 'Близнецы', 'Лев', 'Стрелец', 'Водолей']);
+const ACTIVE_LUNAR_DAYS = new Set([3, 7, 8, 10, 11, 14, 17, 20, 21]);
+const RESTRAINED_LUNAR_DAYS = new Set([9, 15, 19, 23, 25, 26, 29, 30]);
+
+function getLunarDayPolarity(dayNum) {
+  const n = Number(dayNum);
+  if (ACTIVE_LUNAR_DAYS.has(n)) return 'active';
+  if (RESTRAINED_LUNAR_DAYS.has(n)) return 'restrained';
+  return 'neutral';
+}
+
+function getPersonalPacingPolarity(phaseKey) {
+  return PASSIVE_PHASES.has(phaseKey) ? 'passive' : 'active';
+}
+
+function buildBackdropContrastSentence(baseLang, { isPersonal, phaseKey, activeLunarDay }) {
+  if (!isPersonal) return '';
+  const lunarPolarity = getLunarDayPolarity(activeLunarDay);
+  if (lunarPolarity === 'neutral') return '';
+  const personalPolarity = getPersonalPacingPolarity(phaseKey);
+
+  if (personalPolarity === 'passive' && lunarPolarity === 'active') {
+    switch (baseLang) {
+      case 'ru': return 'Внешняя деловая среда сейчас ускоряется, но ваш личный ресурс в фазе восстановления — не смешивайте внешний ажиотаж со своими приоритетами и завершайте уже начатое.';
+      case 'es': return 'El entorno externo gana impulso comercial, pero tu recurso personal está en pausa de recuperación — no mezcles la prisa externa con tus prioridades y cierra lo iniciado.';
+      case 'de': return 'Das äußere Umfeld gewinnt an Tempo, während Ihre persönliche Ressource auf Erholung steht — verwechseln Sie äußere Dynamik nicht mit Ihren Prioritäten und schließen Sie Laufendes ab.';
+      case 'fr': return 'L’environnement extérieur gagne en dynamisme alors que votre ressource personnelle est en phase de récupération — ne confondez pas l’élan ambiant avec vos priorités et bouclez l’existant.';
+      default: return 'The external environment carries fast business momentum, while your personal pacing is in a recovery window — keep external urgency separate from your own priorities and focus on finishing open items.';
+    }
+  }
+
+  if (personalPolarity === 'active' && lunarPolarity === 'restrained') {
+    switch (baseLang) {
+      case 'ru': return 'Личного ресурса достаточно, но внешний календарный фон предупреждает о лишних рисках — действуйте расчётливо, перепроверяйте условия и не форсируйте события.';
+      case 'es': return 'Tu energía personal es alta, pero el contexto del calendario advierte fricción extra — actúa con cálculo, revisa las condiciones y evita forzar resultados.';
+      case 'de': return 'Ihre persönliche Energie ist hoch, doch der Kalender-Hintergrund mahnt zur Vorsicht — handeln Sie überlegt, prüfen Sie Details nach und erzwingen Sie nichts.';
+      case 'fr': return 'Votre énergie personnelle est élevée, mais le contexte du calendrier invite à la prudence — agissez avec méthode, vérifiez les détails et ne forcez rien.';
+      default: return 'Your personal energy is high, yet the calendar backdrop signals extra friction — act deliberately, double-check terms, and avoid forcing outcomes.';
+    }
+  }
+
+  if (personalPolarity === 'passive' && lunarPolarity === 'restrained') {
+    switch (baseLang) {
+      case 'ru': return 'И личный темп, и внешний фон единодушны: день лучше провести бережно, без перегрузок и спорных решений.';
+      case 'es': return 'Tanto tu ritmo personal como el entorno coinciden: conviene llevar el día con calma, sin sobrecargas ni decisiones arriesgadas.';
+      case 'de': return 'Sowohl Ihr persönliches Tempo als auch das äußere Umfeld raten zu Zurückhaltung — ohne Überlastung und riskante Schritte.';
+      case 'fr': return 'Votre rythme personnel et le contexte ambiant convergent : gardez une journée douce, sans surcharge ni décision risquée.';
+      default: return 'Both your personal pacing and the external backdrop agree: keep the day gentle, without overload or risky decisions.';
+    }
+  }
+
+  switch (baseLang) {
+    case 'ru': return 'И ваш ресурс, и внешняя среда поддерживают движение вперёд — удобное окно для ответственных шагов.';
+    case 'es': return 'Tanto tu recurso como el entorno respaldan el avance — una ventana bien alineada para pasos firmes.';
+    case 'de': return 'Sowohl Ihre Ressource als auch der Kalender-Hintergrund stützen Fortschritte — ein stimmiges Zeitfenster für klare Schritte.';
+    case 'fr': return 'Votre ressource et le contexte ambiant soutiennent tous deux l’élan — un créneau bien aligné pour avancer.';
+    default: return 'Both your personal capacity and the external backdrop support forward motion — a well-aligned window for decisive steps.';
+  }
+}
+
+function formatLunarDayBackdropLead(baseLang, ctx) {
+  const {
+    activeLunarDay,
+    lunarDayFullLabel,
+    firstDay,
+    secondDay,
+    activeIndex,
+    transitionTimeStr,
+    moonLoc
+  } = ctx;
+
+  const hasTransition = firstDay !== secondDay && transitionTimeStr;
+  const isAlreadySwitched = hasTransition && activeIndex === 1;
+  const isBeforeSwitch = hasTransition && activeIndex === 0;
+
+  switch (baseLang) {
+    case 'ru': {
+      const dayStr = `${getRuOrdinalNumeric(activeLunarDay)} ${lunarDayFullLabel}`;
+      if (isAlreadySwitched) {
+        return `С ${transitionTimeStr} идут ${dayStr}, ${moonLoc}.`;
+      }
+      if (isBeforeSwitch) {
+        return `До ${transitionTimeStr} идут ${dayStr} (далее ${getRuOrdinalNumeric(secondDay)}), ${moonLoc}.`;
+      }
+      return `Идут ${dayStr}, ${moonLoc}.`;
+    }
+    case 'es': {
+      const dayStr = `${activeLunarDay}.º ${lunarDayFullLabel}`;
+      if (isAlreadySwitched) {
+        return `Desde las ${transitionTimeStr} transcurre el ${dayStr}, ${moonLoc}.`;
+      }
+      if (isBeforeSwitch) {
+        return `Hasta las ${transitionTimeStr} transcurre el ${dayStr} (después el ${secondDay}.º), ${moonLoc}.`;
+      }
+      return `Transcurre el ${dayStr}, ${moonLoc}.`;
+    }
+    case 'de': {
+      const dayStr = `${activeLunarDay}. ${lunarDayFullLabel}`;
+      if (isAlreadySwitched) {
+        return `Seit ${transitionTimeStr} läuft der ${dayStr}, ${moonLoc}.`;
+      }
+      if (isBeforeSwitch) {
+        return `Bis ${transitionTimeStr} läuft der ${dayStr} (danach der ${secondDay}.), ${moonLoc}.`;
+      }
+      return `Es läuft der ${dayStr}, ${moonLoc}.`;
+    }
+    case 'fr': {
+      const dayStr = `${activeLunarDay}e ${lunarDayFullLabel}`;
+      if (isAlreadySwitched) {
+        return `Depuis ${transitionTimeStr}, nous sommes au ${dayStr}, ${moonLoc}.`;
+      }
+      if (isBeforeSwitch) {
+        return `Jusqu'à ${transitionTimeStr}, nous sommes au ${dayStr} (puis le ${secondDay}e), ${moonLoc}.`;
+      }
+      return `Nous sommes au ${dayStr}, ${moonLoc}.`;
+    }
+    default: {
+      const dayStr = `${toEnglishOrdinal(activeLunarDay)} ${lunarDayFullLabel}`;
+      if (isAlreadySwitched) {
+        return `Since ${transitionTimeStr}, it is the ${dayStr}, ${moonLoc}.`;
+      }
+      if (isBeforeSwitch) {
+        return `Until ${transitionTimeStr}, it is the ${dayStr} (then the ${toEnglishOrdinal(secondDay)}), ${moonLoc}.`;
+      }
+      return `It is the ${dayStr}, ${moonLoc}.`;
+    }
+  }
+}
+
+function formatWeeklyBackgroundLead(baseLang, labels, bgDetail, edgeDetail) {
+  const needsCautionBridge =
+    bgDetail?.valence === 'warning' &&
+    edgeDetail?.valence &&
+    edgeDetail.valence !== 'warning';
+
+  if (needsCautionBridge) {
+    switch (baseLang) {
+      case 'ru':
+        return bgDetail.isExact
+          ? `При этом учитывайте фон недели (${labels.card_exact_peak_badge})`
+          : 'При этом учитывайте фон недели';
+      case 'es':
+        return bgDetail.isExact
+          ? `Ten en cuenta también el contexto semanal (${labels.card_exact_peak_badge})`
+          : 'Ten en cuenta también el contexto semanal';
+      case 'de':
+        return bgDetail.isExact
+          ? `Beachten Sie dabei den Wochenhintergrund (${labels.card_exact_peak_badge})`
+          : 'Beachten Sie dabei den Wochenhintergrund';
+      case 'fr':
+        return bgDetail.isExact
+          ? `Tenez toutefois compte du fond de semaine (${labels.card_exact_peak_badge})`
+          : 'Tenez toutefois compte du fond de semaine';
+      default:
+        return bgDetail.isExact
+          ? `Meanwhile, factor in the weekly backdrop (${labels.card_exact_peak_badge})`
+          : 'Meanwhile, factor in the weekly backdrop';
+    }
+  }
+
+  return bgDetail.isExact
+    ? `${labels.card_weekly_bg} (${labels.card_exact_peak_badge})`
+    : labels.card_weekly_bg;
+}
+
+function buildEveningWrapLine(baseLang, { isPersonal, phaseKey, activeLunarDay, lunarDayFullLabel }) {
+  const isCalmClosing = !isPersonal || PASSIVE_PHASES.has(phaseKey) || getLunarDayPolarity(activeLunarDay) === 'restrained';
+  switch (baseLang) {
+    case 'ru': {
+      const dayLabel = `${getRuOrdinalNumeric(activeLunarDay)} ${lunarDayFullLabel}`;
+      return isCalmClosing
+        ? `Спокойно завершите ${dayLabel}: закройте открытые бытовые или рабочие мелочи и перейдите к восстановлению без вечерних переговоров и новых стартов.`
+        : `Подведите спокойный итог (${dayLabel}): зафиксируйте сделанное за день и плавно закройте рабочий контур перед сном.`;
+    }
+    case 'es': {
+      const dayLabel = `${activeLunarDay}.º ${lunarDayFullLabel}`;
+      return isCalmClosing
+        ? `Cierra con calma el ${dayLabel}: concluye pequeños pendientes y pasa al descanso sin negociaciones tardías ni nuevos inicios.`
+        : `Haz un cierre tranquilo (${dayLabel}): registra lo avanzado hoy y desconecta gradualmente del ritmo laboral antes de dormir.`;
+    }
+    case 'de': {
+      const dayLabel = `${activeLunarDay}. ${lunarDayFullLabel}`;
+      return isCalmClosing
+        ? `Schließen Sie den ${dayLabel} ruhig ab: erledigen Sie kleine offene Punkte und wechseln Sie ohne späte Verhandlungen oder Neustarts in die Erholung.`
+        : `Ziehen Sie ein ruhiges Tagesfazit (${dayLabel}): halten Sie Ergebnisse fest und beenden Sie den Arbeitsmodus rechtzeitig vor dem Schlaf.`;
+    }
+    case 'fr': {
+      const dayLabel = `${activeLunarDay}e ${lunarDayFullLabel}`;
+      return isCalmClosing
+        ? `Terminez calmement le ${dayLabel} : bouclez les derniers détails et passez au repos sans négociations tardives ni nouveaux lancements.`
+        : `Faites un bilan apaisé (${dayLabel}) : notez l'essentiel accompli aujourd'hui et quittez le mode actif avant le sommeil.`;
+    }
+    default: {
+      const dayLabel = `${toEnglishOrdinal(activeLunarDay)} ${lunarDayFullLabel}`;
+      return isCalmClosing
+        ? `Wind down the ${dayLabel} gently: close small open items and shift into recovery without late negotiations or new launches.`
+        : `Wrap up the ${dayLabel} calmly: capture today's progress and step cleanly out of work mode before sleep.`;
+    }
+  }
+}
 
 function isActiveSignalEdge(edge) {
   if (!edge) return false;
@@ -480,6 +679,7 @@ function resolveLanguageNameEn(bcp47Lang) {
       return display.of(baseCode) || display.of(raw) || 'Russian';
     }
   } catch {
+    // Fallback below if DisplayNames cannot resolve custom code
   }
   return baseCode === 'ru' ? 'Russian' : raw;
 }
@@ -548,8 +748,12 @@ function formatSpeechByLang(baseLang, parts) {
     signName,
     ingressInfo,
     lunarDayNote,
+    contrastSentence,
     zodiacHint,
     illuminationPct,
+    firstDay,
+    secondDay,
+    activeIndex,
     transitionTimeStr,
     phaseTitle,
     dayInPhase,
@@ -584,9 +788,37 @@ function formatSpeechByLang(baseLang, parts) {
     }
   };
 
+  const formatTransitionSpeech = (langCode) => {
+    if (!transitionTimeStr) return '';
+    const alreadySwitched = firstDay !== secondDay && activeIndex === 1;
+    switch (langCode) {
+      case 'ru':
+        return alreadySwitched
+          ? `Текущие ${lunarDaySpeech} начались в ${transitionTimeStr}.`
+          : `Смена лунных суток наступит в ${transitionTimeStr}.`;
+      case 'es':
+        return alreadySwitched
+          ? `El ${lunarDaySpeech} actual comenzó a las ${transitionTimeStr}.`
+          : `El cambio de día lunar será a las ${transitionTimeStr}.`;
+      case 'de':
+        return alreadySwitched
+          ? `Der aktuelle ${lunarDaySpeech} begann um ${transitionTimeStr}.`
+          : `Der nächste Mondtag beginnt um ${transitionTimeStr}.`;
+      case 'fr':
+        return alreadySwitched
+          ? `Le ${lunarDaySpeech} actuel a commencé à ${transitionTimeStr}.`
+          : `Le prochain jour lunaire commence à ${transitionTimeStr}.`;
+      default:
+        return alreadySwitched
+          ? `The current ${lunarDaySpeech} began at ${transitionTimeStr}.`
+          : `The next lunar day begins at ${transitionTimeStr}.`;
+    }
+  };
+
   if (!phaseTitle) {
     const signPhrase = speechSignLead(baseLang);
     const sep = ingressInfo ? ': ' : ' ';
+    const transSentence = formatTransitionSpeech(baseLang);
     switch (baseLang) {
       case 'ru':
         return [
@@ -594,7 +826,7 @@ function formatSpeechByLang(baseLang, parts) {
           dayThemeFocus,
           lunarDayNote,
           `Обстановка дня располагает к тому, что ${zodiacHint}, а освещённость Луны составляет ${illuminationPct} процентов.`,
-          `Смена лунных суток наступит в ${transitionTimeStr}.`
+          transSentence
         ];
       case 'es':
         return [
@@ -602,7 +834,7 @@ function formatSpeechByLang(baseLang, parts) {
           dayThemeFocus,
           lunarDayNote,
           `La jornada favorece ${zodiacHint}, con una iluminación lunar del ${illuminationPct} por ciento.`,
-          `El cambio de día lunar será a las ${transitionTimeStr}.`
+          transSentence
         ];
       case 'de':
         return [
@@ -610,7 +842,7 @@ function formatSpeechByLang(baseLang, parts) {
           dayThemeFocus,
           lunarDayNote,
           `Die Tagesstimmung unterstützt ${zodiacHint}, bei ${illuminationPct} Prozent Mondbeleuchtung.`,
-          `Der nächste Mondtag beginnt um ${transitionTimeStr}.`
+          transSentence
         ];
       case 'fr':
         return [
@@ -618,7 +850,7 @@ function formatSpeechByLang(baseLang, parts) {
           dayThemeFocus,
           lunarDayNote,
           `L'ambiance du jour favorise ${zodiacHint}, avec une illumination lunaire de ${illuminationPct} pour cent.`,
-          `Le prochain jour lunaire commence à ${transitionTimeStr}.`
+          transSentence
         ];
       default:
         return [
@@ -626,7 +858,7 @@ function formatSpeechByLang(baseLang, parts) {
           dayThemeFocus,
           lunarDayNote,
           `The day favors ${zodiacHint}, with lunar illumination at ${illuminationPct} percent.`,
-          `The next lunar day begins at ${transitionTimeStr}.`
+          transSentence
         ];
     }
   }
@@ -656,6 +888,7 @@ function formatSpeechByLang(baseLang, parts) {
       } else if (lunarDayNote) {
         sentences.push(lunarDayNote);
       }
+      if (contrastSentence) sentences.push(contrastSentence);
       if (tip) sentences.push(tip);
       return sentences;
 
@@ -680,6 +913,7 @@ function formatSpeechByLang(baseLang, parts) {
       } else if (lunarDayNote) {
         sentences.push(lunarDayNote);
       }
+      if (contrastSentence) sentences.push(contrastSentence);
       if (tip) sentences.push(tip);
       return sentences;
 
@@ -704,6 +938,7 @@ function formatSpeechByLang(baseLang, parts) {
       } else if (lunarDayNote) {
         sentences.push(lunarDayNote);
       }
+      if (contrastSentence) sentences.push(contrastSentence);
       if (tip) sentences.push(tip);
       return sentences;
 
@@ -728,6 +963,7 @@ function formatSpeechByLang(baseLang, parts) {
       } else if (lunarDayNote) {
         sentences.push(lunarDayNote);
       }
+      if (contrastSentence) sentences.push(contrastSentence);
       if (tip) sentences.push(tip);
       return sentences;
 
@@ -752,6 +988,7 @@ function formatSpeechByLang(baseLang, parts) {
       } else if (lunarDayNote) {
         sentences.push(lunarDayNote);
       }
+      if (contrastSentence) sentences.push(contrastSentence);
       if (tip) sentences.push(tip);
       return sentences;
   }
@@ -782,7 +1019,6 @@ function buildBriefingSpeechText() {
   const dateSeed = toISODate(selectedDate);
   const dayTheme = getDayTheme(dict, sign);
   const dayThemeFocus = dayTheme?.focus || '';
-
   const ingressInfo = summary.signIngress
     ? {
         fromCanonical: summary.signIngress.fromSign,
@@ -801,9 +1037,13 @@ function buildBriefingSpeechText() {
       signName,
       ingressInfo,
       lunarDayNote,
+      contrastSentence: '',
       zodiacHint,
       dayThemeFocus,
       illuminationPct: summary.phaseInfo.illuminationPct,
+      firstDay: summary.firstDay,
+      secondDay: summary.secondDay,
+      activeIndex: summary.activeIndex,
       transitionTimeStr: summary.transitionTimeStr
     });
     return sentences.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
@@ -824,6 +1064,11 @@ function buildBriefingSpeechText() {
   const phaseVariantLine = getPhaseVariantLine(dict, personal.phaseKey, dateSeed);
   const roleTone = getRoleToneOrHint(dict, personal.roleKey, personal.phaseKey);
   const bridgeText = buildHarmonyBridge(personal, sign, personal.dailyFocusEdge, dict);
+  const contrastSentence = buildBackdropContrastSentence(baseLang, {
+    isPersonal: true,
+    phaseKey: personal.phaseKey,
+    activeLunarDay: summary.activeLunarDay
+  });
 
   let edgeInfo = null;
   if (personal.dailyFocusEdge) {
@@ -848,6 +1093,7 @@ function buildBriefingSpeechText() {
     signName,
     ingressInfo,
     lunarDayNote,
+    contrastSentence,
     zodiacHint,
     phaseTitle: phase.title,
     dayInPhase: personal.phaseStage.dayInPhase,
@@ -980,6 +1226,18 @@ function buildExternalAIPrompt() {
       );
     }
 
+    const lunarPolarity = getLunarDayPolarity(summary.activeLunarDay);
+    const personalPolarity = getPersonalPacingPolarity(personal.phaseKey);
+    if (personalPolarity === 'passive' && lunarPolarity === 'active') {
+      lines.push(
+        `- Environment vs Personal Pacing Contrast: Active lunar day (${toEnglishOrdinal(summary.activeLunarDay)}) accelerates external business activity while personal rhythm (${personal.phaseKey}) requires recovery — explicitly separate external rush from personal capacity and forbid new project starts.`
+      );
+    } else if (personalPolarity === 'active' && lunarPolarity === 'restrained') {
+      lines.push(
+        `- Environment vs Personal Pacing Contrast: Personal capacity (${personal.phaseKey}) is high while the lunar day (${toEnglishOrdinal(summary.activeLunarDay)}) signals extra external friction — channel strong personal drive carefully with double-checked terms and zero impulsive risk.`
+      );
+    }
+
     if (personal.dailyFocusEdge) {
       const e = personal.dailyFocusEdge;
       const actor = dict.actors[e.actorKey] || dict.actors.actor_moon;
@@ -1025,6 +1283,9 @@ function buildExternalAIPrompt() {
   return lines.join('\n');
 }
 
+// =========================================================================
+// Rendering: Hero, Today, Timeline, Reminders, Settings
+// =========================================================================
 function getUILabels(dict = getActiveDictionary()) {
   const baseLabels = getActiveBaseDictionary().ui_labels || {};
   return {
@@ -1184,7 +1445,7 @@ function resolveDayStatus(personal, summary, dict, labels) {
   if (trend === 'new' || trend === 'waning_crescent') {
     return { key: 'refrain', label: labels.day_status_refrain };
   }
-  if (trend === 'last_quarter' || trend === 'waning_gibbous' || trend === 'waxing_crescent') {
+  if (trend === 'first_quarter' || trend === 'last_quarter') {
     return { key: 'caution', label: labels.day_status_caution };
   }
   return { key: 'favorable', label: labels.day_status_favorable };
@@ -1192,6 +1453,7 @@ function resolveDayStatus(personal, summary, dict, labels) {
 
 function buildTodayIntroText(baseLang, ctx) {
   const {
+    labels,
     isToday,
     isPersonal,
     statusKey,
@@ -1205,7 +1467,12 @@ function buildTodayIntroText(baseLang, ctx) {
     roleTitle,
     dayThemeFocus,
     activeLunarDay,
+    firstDay,
+    secondDay,
+    activeIndex,
+    transitionTimeStr,
     lunarDayFullLabel,
+    lunarDayNote,
     canonicalSign,
     signName,
     ingressInfo,
@@ -1216,203 +1483,223 @@ function buildTodayIntroText(baseLang, ctx) {
 
   const themeNote = dayThemeFocus ? ` ${dayThemeFocus}` : '';
   const moonLoc = formatMoonLocPhrase(baseLang, canonicalSign, signName, ingressInfo, true, isToday);
+  const backdropLead = formatLunarDayBackdropLead(baseLang, {
+    activeLunarDay,
+    lunarDayFullLabel,
+    firstDay,
+    secondDay,
+    activeIndex,
+    transitionTimeStr,
+    moonLoc
+  });
+  const lunarNoteSentence = ensureSentence(lunarDayNote);
+  const contrastSentence = buildBackdropContrastSentence(baseLang, {
+    isPersonal,
+    phaseKey,
+    activeLunarDay
+  });
+  const backdropLabel = labels?.label_calendar_backdrop || '';
+  const resourceLabel = labels?.label_personal_resource || '';
+  const backdropText = [backdropLead, lunarNoteSentence, contrastSentence].filter(Boolean).join(' ');
 
   if (!isPersonal) {
+    let mainText = '';
     switch (baseLang) {
       case 'ru': {
-        const dayStr = `${getRuOrdinalNumeric(activeLunarDay)} ${lunarDayFullLabel}`;
-        const lead = `Идут ${dayStr}, ${moonLoc} (${uncapitalizeFirst(detailedTrendLabel)}, ${illuminationStr}%).${themeNote}`;
+        const lead = `Фаза Луны — ${uncapitalizeFirst(detailedTrendLabel)} (${illuminationStr}%), ${moonLoc}.${themeNote}`;
         if (statusKey === 'refrain') {
-          return `${lead} Лучше воздержаться от новых стартов, крупных обязательств и поспешных решений — время подходит для спокойного завершения дел и восстановления.`;
+          mainText = `${lead} Лучше воздержаться от новых стартов, крупных обязательств и поспешных решений — время подходит для спокойного завершения дел и восстановления.`;
+        } else if (statusKey === 'caution') {
+          mainText = `${lead} Стоит избегать перегрузок и суеты — благоприятно для выверенных дел (${zodiacHint}).`;
+        } else {
+          mainText = `${lead} Благоприятно для задач, где помогают ${zodiacHint}.`;
         }
-        if (statusKey === 'caution') {
-          return `${lead} Стоит избегать перегрузок и суеты — благоприятно для выверенных дел (${zodiacHint}).`;
-        }
-        return `${lead} Благоприятно для задач, где помогают ${zodiacHint}.`;
+        break;
       }
       case 'es': {
-        const lead = `Transcurre el ${activeLunarDay}.º ${lunarDayFullLabel}, ${moonLoc} (${uncapitalizeFirst(detailedTrendLabel)}, ${illuminationStr}%).${themeNote}`;
+        const lead = `Fase lunar: ${uncapitalizeFirst(detailedTrendLabel)} (${illuminationStr}%), ${moonLoc}.${themeNote}`;
         if (statusKey === 'refrain') {
-          return `${lead} Mejor abstenerse de nuevos comienzos, grandes compromisos y decisiones apresuradas — momento propicio para cerrar pendientes y descansar.`;
+          mainText = `${lead} Mejor abstenerse de nuevos comienzos, grandes compromisos y decisiones apresuradas — momento propicio para cerrar pendientes y descansar.`;
+        } else if (statusKey === 'caution') {
+          mainText = `${lead} Conviene evitar sobrecargas y prisas — favorable para pasos medidos (${zodiacHint}).`;
+        } else {
+          mainText = `${lead} Favorable para tareas donde ayuda ${zodiacHint}.`;
         }
-        if (statusKey === 'caution') {
-          return `${lead} Conviene evitar sobrecargas y prisas — favorable para pasos medidos (${zodiacHint}).`;
-        }
-        return `${lead} Favorable para tareas donde ayuda ${zodiacHint}.`;
+        break;
       }
       case 'de': {
-        const lead = `Es läuft der ${activeLunarDay}. ${lunarDayFullLabel}, ${moonLoc} (${detailedTrendLabel}, ${illuminationStr}%).${themeNote}`;
+        const lead = `Mondphase: ${detailedTrendLabel} (${illuminationStr}%), ${moonLoc}.${themeNote}`;
         if (statusKey === 'refrain') {
-          return `${lead} Besser zurückhalten bei Neustarts, großen Verpflichtungen und vorschnellen Entscheidungen — ruhige Zeit für Abschlüsse und Erholung.`;
+          mainText = `${lead} Besser zurückhalten bei Neustarts, großen Verpflichtungen und vorschnellen Entscheidungen — ruhige Zeit für Abschlüsse und Erholung.`;
+        } else if (statusKey === 'caution') {
+          mainText = `${lead} Vermeiden Sie Überlastung und Hektik — geeignet für überlegte Schritte (${zodiacHint}).`;
+        } else {
+          mainText = `${lead} Günstig für Vorhaben mit Fokus auf ${zodiacHint}.`;
         }
-        if (statusKey === 'caution') {
-          return `${lead} Vermeiden Sie Überlastung und Hektik — geeignet für überlegte Schritte (${zodiacHint}).`;
-        }
-        return `${lead} Günstig für Vorhaben mit Fokus auf ${zodiacHint}.`;
+        break;
       }
       case 'fr': {
-        const lead = `Nous sommes au ${activeLunarDay}e ${lunarDayFullLabel}, ${moonLoc} (${uncapitalizeFirst(detailedTrendLabel)}, ${illuminationStr}%).${themeNote}`;
+        const lead = `Phase lunaire : ${uncapitalizeFirst(detailedTrendLabel)} (${illuminationStr}%), ${moonLoc}.${themeNote}`;
         if (statusKey === 'refrain') {
-          return `${lead} Mieux vaut s'abstenir de nouveaux départs, de gros engagements et de décisions hâtives — temps calme propice au bouclage et au repos.`;
+          mainText = `${lead} Mieux vaut s'abstenir de nouveaux départs, de gros engagements et de décisions hâtives — temps calme propice au bouclage et au repos.`;
+        } else if (statusKey === 'caution') {
+          mainText = `${lead} Évitez la surcharge et la précipitation — utile pour avancer avec mesure (${zodiacHint}).`;
+        } else {
+          mainText = `${lead} Favorable aux démarches soutenues par ${zodiacHint}.`;
         }
-        if (statusKey === 'caution') {
-          return `${lead} Évitez la surcharge et la précipitation — utile pour avancer avec mesure (${zodiacHint}).`;
-        }
-        return `${lead} Favorable aux démarches soutenues par ${zodiacHint}.`;
+        break;
       }
       default: {
-        const lead = `It is the ${toEnglishOrdinal(activeLunarDay)} ${lunarDayFullLabel}, ${moonLoc} (${uncapitalizeFirst(detailedTrendLabel)}, ${illuminationStr}%).${themeNote}`;
+        const lead = `Moon phase: ${uncapitalizeFirst(detailedTrendLabel)} (${illuminationStr}%), ${moonLoc}.${themeNote}`;
         if (statusKey === 'refrain') {
-          return `${lead} Best to refrain from new launches, major commitments, and hasty decisions — a quiet window for wrapping up open items and recovery.`;
+          mainText = `${lead} Best to refrain from new launches, major commitments, and hasty decisions — a quiet window for wrapping up open items and recovery.`;
+        } else if (statusKey === 'caution') {
+          mainText = `${lead} Avoid overloading your schedule or rushing — workable for measured steps (${zodiacHint}).`;
+        } else {
+          mainText = `${lead} Favorable for tasks supported by ${zodiacHint}.`;
         }
-        if (statusKey === 'caution') {
-          return `${lead} Avoid overloading your schedule or rushing — workable for measured steps (${zodiacHint}).`;
-        }
-        return `${lead} Favorable for tasks supported by ${zodiacHint}.`;
+        break;
       }
     }
+
+    return {
+      mainLabel: '',
+      mainText,
+      backdropLabel,
+      backdropText
+    };
   }
 
+  let mainText = '';
   switch (baseLang) {
     case 'ru': {
       const roleBit = roleTitle ? `, формат дня — ${uncapitalizeFirst(roleTitle)}` : '';
       const courseSentence = `Основной курс дня — ${uncapitalizeFirst(phaseTitle)} (день ${dayInPhase} из ${totalDays}${roleBit}): опирайтесь на ${uncapitalizeFirst(profileTitle)} и ${getRuAccusativePhrase(ageTitle)}.`;
-      const dayStr = `${getRuOrdinalNumeric(activeLunarDay)} ${lunarDayFullLabel}`;
       let guidanceSentence = '';
-      let lunarFocus = '';
 
       if (phaseKey === 'phase_minimum') {
         guidanceSentence = 'Лучше воздержаться от новых стартов, крупных обязательств и импульсивных решений.';
-        lunarFocus = 'спокойного анализа опыта, рутины и переписки';
       } else if (phaseKey === 'phase_decline') {
         guidanceSentence = hasWarning
           ? 'Лучше воздержаться от споров, спешки и запуска новых проектов — сосредоточьтесь на завершении текущих дел.'
           : 'Лучше воздержаться от запуска новых проектов, лишних обещаний и резкой смены планов — сделайте упор на завершение текущих дел.';
-        lunarFocus = 'подведения итогов, работы с документами и наведения порядка';
       } else if (phaseKey === 'phase_rise') {
         guidanceSentence = hasWarning
           ? 'Стоит воздержаться от распыления и непроверенных обещаний — сделайте упор на пошаговое планирование и проверку деталей.'
           : 'Благоприятно сделать упор на пошаговое планирование, сбор данных и спокойную подготовку к запуску.';
-        lunarFocus = `задач, где важны ${zodiacHint}`;
       } else {
         guidanceSentence = hasWarning
           ? 'Стоит воздержаться от резкости и поспешных конфликтов — направьте ресурс на ключевые переговоры и сложные задачи.'
           : 'Благоприятно направить высокий ресурс на ключевые переговоры, запуск важных проектов и ответственные решения.';
-        lunarFocus = `задач, где важны ${zodiacHint}`;
       }
 
-      return `${courseSentence} ${guidanceSentence} Идут ${dayStr}, ${moonLoc} — благоприятно для ${lunarFocus}.${themeNote}`;
+      mainText = `${courseSentence} ${guidanceSentence}`;
+      break;
     }
     case 'es': {
       const roleBit = roleTitle ? `, formato de hoy: ${roleTitle.toLowerCase()}` : '';
       const courseSentence = `El rumbo principal de hoy es ${phaseTitle.toLowerCase()} (día ${dayInPhase} de ${totalDays}${roleBit}): apóyate en ${profileTitle.toLowerCase()} y ${ageTitle.toLowerCase()}.`;
       let guidanceSentence = '';
-      let lunarFocus = '';
 
       if (phaseKey === 'phase_minimum') {
         guidanceSentence = 'Mejor abstenerse de nuevos comienzos, grandes compromisos y decisiones impulsivas.';
-        lunarFocus = 'el análisis tranquilo, la rutina ligera y responder mensajes';
       } else if (phaseKey === 'phase_decline') {
         guidanceSentence = hasWarning
           ? 'Mejor abstenerse de discusiones, prisas y nuevos proyectos — concéntrate en cerrar las tareas en curso.'
           : 'Mejor abstenerse de lanzar nuevos proyectos, promesas innecesarias y cambios bruscos — prioriza cerrar lo iniciado.';
-        lunarFocus = 'cerrar pendientes, revisar documentos y ordenar procesos';
       } else if (phaseKey === 'phase_rise') {
         guidanceSentence = hasWarning
           ? 'Conviene abstenerse de dispersarse o prometer sin verificar — enfócate en planificar paso a paso y revisar detalles.'
           : 'Favorable para enfocarse en planificar paso a paso, reunir datos y preparar lanzamientos con calma.';
-        lunarFocus = zodiacHint;
       } else {
         guidanceSentence = hasWarning
           ? 'Conviene evitar la brusquedad y conflictos apresurados — dirige tu recurso a negociaciones clave y tareas exigentes.'
           : 'Favorable para dirigir tu energía alta a negociaciones clave, lanzamientos importantes y decisiones firmes.';
-        lunarFocus = zodiacHint;
       }
 
-      return `${courseSentence} ${guidanceSentence} Transcurre el ${activeLunarDay}.º ${lunarDayFullLabel}, ${moonLoc} — favorable para ${lunarFocus}.${themeNote}`;
+      mainText = `${courseSentence} ${guidanceSentence}`;
+      break;
     }
     case 'de': {
       const roleBit = roleTitle ? `, Tagesmodus: ${roleTitle}` : '';
       const courseSentence = `Der heutige Hauptkurs ist ${phaseTitle} (Tag ${dayInPhase} von ${totalDays}${roleBit}): stützen Sie sich auf ${profileTitle} und ${ageTitle}.`;
       let guidanceSentence = '';
-      let lunarFocus = '';
 
       if (phaseKey === 'phase_minimum') {
         guidanceSentence = 'Besser zurückhalten bei Neustarts, großen Verpflichtungen und impulsiven Entscheidungen.';
-        lunarFocus = 'ruhige Auswertung, leichte Routine und Korrespondenz';
       } else if (phaseKey === 'phase_decline') {
         guidanceSentence = hasWarning
           ? 'Besser zurückhalten bei Debatten, Hektik und neuen Projekten — konzentrieren Sie sich auf den Abschluss laufender Aufgaben.'
           : 'Besser zurückhalten bei neuen Projektstarts, unnötigen Zusagen und abrupten Wechseln — setzen Sie auf den Abschluss laufender Aufgaben.';
-        lunarFocus = 'Abschlüsse, Dokumentation und ruhiges Nacharbeiten';
       } else if (phaseKey === 'phase_rise') {
         guidanceSentence = hasWarning
           ? 'Vermeiden Sie Verzettelung und ungeprüfte Zusagen — setzen Sie auf schrittweise Planung und Detailprüfung.'
           : 'Günstig für den Fokus auf schrittweise Planung, Datensammlung und ruhige Startvorbereitung.';
-        lunarFocus = zodiacHint;
       } else {
         guidanceSentence = hasWarning
           ? 'Vermeiden Sie Schärfe und vorschnelle Konflikte — lenken Sie Ihre Energie auf Schlüsselgespräche und komplexe Aufgaben.'
           : 'Günstig, um hohe Energie in Schlüsselgespräche, wichtige Projektstarts und klare Entscheidungen zu lenken.';
-        lunarFocus = zodiacHint;
       }
-      return `${courseSentence} ${guidanceSentence} Es läuft der ${activeLunarDay}. ${lunarDayFullLabel}, ${moonLoc} — günstig für ${lunarFocus}.${themeNote}`;
+
+      mainText = `${courseSentence} ${guidanceSentence}`;
+      break;
     }
     case 'fr': {
       const roleBit = roleTitle ? `, format du jour : ${roleTitle.toLowerCase()}` : '';
       const courseSentence = `Le cap principal du jour est ${phaseTitle.toLowerCase()} (jour ${dayInPhase} sur ${totalDays}${roleBit}) : appuyez-vous sur ${profileTitle.toLowerCase()} et ${ageTitle.toLowerCase()}.`;
       let guidanceSentence = '';
-      let lunarFocus = '';
 
       if (phaseKey === 'phase_minimum') {
         guidanceSentence = "Mieux vaut s'abstenir de nouveaux départs, de gros engagements et de décisions impulsives.";
-        lunarFocus = "l'analyse calme, la routine légère et les échanges écrits";
       } else if (phaseKey === 'phase_decline') {
         guidanceSentence = hasWarning
           ? "Mieux vaut s'abstenir de débats, de précipitation et de nouveaux projets — concentrez-vous sur la clôture des dossiers en cours."
           : "Mieux vaut s'abstenir de lancer de nouveaux projets, de promesses superflues et de virages brusques — misez sur la clôture des dossiers en cours.";
-        lunarFocus = 'la clôture des dossiers, la documentation et la mise en ordre';
       } else if (phaseKey === 'phase_rise') {
         guidanceSentence = hasWarning
           ? "Mieux vaut éviter la dispersion et les promesses non vérifiées — misez sur la planification par étapes et la vérification des détails."
           : "Favorable pour miser sur la planification par étapes, la collecte d'informations et une préparation posée.";
-        lunarFocus = zodiacHint;
       } else {
         guidanceSentence = hasWarning
           ? "Évitez la brusquerie et les conflits précipités — canalisez votre énergie vers les négociations clés et les tâches exigeantes."
           : 'Favorable pour orienter votre pleine énergie vers les négociations clés, les lancements majeurs et les décisions nettes.';
-        lunarFocus = zodiacHint;
       }
-      return `${courseSentence} ${guidanceSentence} Nous sommes au ${activeLunarDay}e ${lunarDayFullLabel}, ${moonLoc} — favorable pour ${lunarFocus}.${themeNote}`;
+
+      mainText = `${courseSentence} ${guidanceSentence}`;
+      break;
     }
     default: {
       const roleBit = roleTitle ? `, daily mode: ${roleTitle.toLowerCase()}` : '';
       const courseSentence = `Today's core course is ${phaseTitle.toLowerCase()} (day ${dayInPhase} of ${totalDays}${roleBit}): lean on ${profileTitle.toLowerCase()} and ${ageTitle.toLowerCase()}.`;
       let guidanceSentence = '';
-      let lunarFocus = '';
 
       if (phaseKey === 'phase_minimum') {
         guidanceSentence = 'Best to refrain from new launches, major commitments, and impulsive decisions.';
-        lunarFocus = 'calm review, light routine, and correspondence';
       } else if (phaseKey === 'phase_decline') {
         guidanceSentence = hasWarning
           ? 'Best to refrain from disputes, rushing, and new projects — focus on finishing ongoing tasks.'
           : 'Best to refrain from launching new projects, extra commitments, and abrupt changes — focus on finishing ongoing work.';
-        lunarFocus = 'wrapping up tasks, organizing documents, and steady review';
       } else if (phaseKey === 'phase_rise') {
         guidanceSentence = hasWarning
           ? 'Avoid scattering focus or making unverified promises — lean into step-by-step planning and checking details.'
           : 'Favorable to focus on step-by-step planning, gathering data, and calm launch preparation.';
-        lunarFocus = zodiacHint;
       } else {
         guidanceSentence = hasWarning
           ? 'Avoid harshness and hasty conflicts — channel high resources into key negotiations and demanding tasks.'
           : 'Favorable to channel high resources into key negotiations, major project launches, and decisive action.';
-        lunarFocus = zodiacHint;
       }
-      return `${courseSentence} ${guidanceSentence} It is the ${toEnglishOrdinal(activeLunarDay)} ${lunarDayFullLabel}, ${moonLoc} — favorable for ${lunarFocus}.${themeNote}`;
+
+      mainText = `${courseSentence} ${guidanceSentence}`;
+      break;
     }
   }
+
+  return {
+    mainLabel: resourceLabel,
+    mainText,
+    backdropLabel,
+    backdropText
+  };
 }
 
 function formatUntilTimeSuffix(baseLang, timeStr) {
@@ -1448,7 +1735,6 @@ function formatSignShiftNote(baseLang, canonicalSign, signName, slot, ingressTim
       default: return `From ${ingressTimeStr}, the Moon enters ${signName}.`;
     }
   }
-
   switch (baseLang) {
     case 'ru':
       return slot === 'evening'
@@ -1483,6 +1769,7 @@ function buildSlotCardsData(baseLang, ctx) {
   const {
     labels,
     isPersonal,
+    phaseKey,
     phaseVariantLine,
     phaseDayNote,
     roleTone,
@@ -1506,7 +1793,6 @@ function buildSlotCardsData(baseLang, ctx) {
     detailedTrendLabel,
     activeLunarDay,
     lunarDayFullLabel,
-    lunarDayNote,
     firstDay,
     secondDay,
     transitionTimeStr,
@@ -1516,6 +1802,7 @@ function buildSlotCardsData(baseLang, ctx) {
   const bridgePrefix = bridgeText ? `${bridgeText} ` : '';
   const ingressTime = ingressInfo?.timeStr || '';
 
+  // 1. Morning text (uses L0 phaseVariant/phaseDayNote + harmonized L1 roleTone + L2 morning focus cue + morning lifestyle tip)
   let morningText = '';
   const morningCue = ensureSentence(windowCues?.morning);
   if (isPersonal) {
@@ -1534,14 +1821,16 @@ function buildSlotCardsData(baseLang, ctx) {
     morningText = [guestMorningByLang[baseLang] || guestMorningByLang.en, morningCue, tips.morning].filter(Boolean).join(' ');
   }
 
+  // 2. Day text (primary fast/baseline edge + bridged weekly background + intraday day shift note + L2 day focus cue + day tip)
   let dayTactics = '';
   let dayShiftNote = '';
   if (isPersonal && edgeDetail) {
     const aspectLine = `${edgeDetail.actorTitle} — ${uncapitalizeFirst(edgeDetail.maneuverTitle)}. ${edgeDetail.scenarioAdvice} ${edgeDetail.dynamicText}`.trim();
     let bgLine = '';
     if (bgDetail) {
+      const bgLead = formatWeeklyBackgroundLead(baseLang, labels, bgDetail, edgeDetail);
       const bgSentence = `${bgDetail.actorTitle} — ${uncapitalizeFirst(bgDetail.maneuverTitle)}: ${uncapitalizeFirst(bgDetail.advice)}`;
-      bgLine = `${bgDetail.isExact ? `${labels.card_weekly_bg} (${labels.card_exact_peak_badge})` : labels.card_weekly_bg}: ${bgSentence}`;
+      bgLine = `${bgLead}: ${bgSentence}`;
     }
     dayTactics = `${bridgePrefix}${aspectLine}${bgLine ? ` ${bgLine}` : ''}`.trim();
     dayShiftNote = signShiftedDay
@@ -1568,26 +1857,26 @@ function buildSlotCardsData(baseLang, ctx) {
         : '';
     }
   }
-
   const dayCue = ensureSentence(windowCues?.day);
   const dayText = [dayTactics, dayShiftNote, dayCue, tips.day].filter(Boolean).join(' ');
 
+  // 3. Evening text (strictly evening closing guidance, evening sign/lunar transition only if >= 18:00, L2 evening cue, evening tip)
+  const transitionHour = transitionTimeStr ? Number(String(transitionTimeStr).split(':')[0]) : NaN;
+  const isEveningTransition = firstDay !== secondDay && Number.isFinite(transitionHour) && transitionHour >= 18;
   const transitionNoteByLang = {
-    ru: `Смена лунных суток — в ${transitionTimeStr}.`,
-    es: `Cambio de día lunar a las ${transitionTimeStr}.`,
-    de: `Wechsel des Mondtags um ${transitionTimeStr}.`,
-    fr: `Changement de jour lunaire à ${transitionTimeStr}.`,
-    en: `Lunar day transitions at ${transitionTimeStr}.`
+    ru: `Смена лунных суток — вечером в ${transitionTimeStr}.`,
+    es: `El cambio de día lunar será esta tarde a las ${transitionTimeStr}.`,
+    de: `Der Wechsel des Mondtags erfolgt abends um ${transitionTimeStr}.`,
+    fr: `Le changement de jour lunaire aura lieu ce soir à ${transitionTimeStr}.`,
+    en: `Lunar day transitions this evening at ${transitionTimeStr}.`
   };
-  const lunarWrapByLang = {
-    ru: `Подведите итоги дня (${getRuOrdinalNumeric(activeLunarDay)} ${lunarDayFullLabel}). ${lunarDayNote}`,
-    es: `Cierra el balance del día (${activeLunarDay}.º ${lunarDayFullLabel}). ${lunarDayNote}`,
-    de: `Ziehen Sie Tagesbilanz (${activeLunarDay}. ${lunarDayFullLabel}). ${lunarDayNote}`,
-    fr: `Faites le bilan de la journée (${activeLunarDay}e ${lunarDayFullLabel}). ${lunarDayNote}`,
-    en: `Wrap up the day (${toEnglishOrdinal(activeLunarDay)} ${lunarDayFullLabel}). ${lunarDayNote}`
-  };
-  const wrapLine = lunarDayNote ? (lunarWrapByLang[baseLang] || lunarWrapByLang.en) : '';
-  const transLine = firstDay !== secondDay ? (transitionNoteByLang[baseLang] || transitionNoteByLang.en) : '';
+  const wrapLine = buildEveningWrapLine(baseLang, {
+    isPersonal,
+    phaseKey,
+    activeLunarDay,
+    lunarDayFullLabel
+  });
+  const transLine = isEveningTransition ? (transitionNoteByLang[baseLang] || transitionNoteByLang.en) : '';
   const eveningShiftNote = signShiftedEvening
     ? formatSignShiftNote(baseLang, eveningCanonicalSign || canonicalSign, eveningSignName, 'evening', ingressTime)
     : '';
@@ -1619,13 +1908,17 @@ function renderHeroAndToday(dict) {
     ? computePersonalState(appState.birthDate, selectedDate, refMoment, appState.birthTime)
     : null;
 
+  // Hero container background
   const heroCard = document.getElementById('hero-card');
   const bgHex = personal ? personal.headerColor : PHASE_COLORS.neutral;
   heroCard.style.backgroundColor = bgHex;
   document.documentElement.style.setProperty('--hero-bg', bgHex);
+
+  // Top-left: Moon illumination with 1 decimal place
   document.getElementById('hero-illumination').textContent =
     `${summary.phaseInfo.illuminationExact.toFixed(1)} %`;
 
+  // Bottom-left: Active alarm bell indicator
   const alarmBtn = document.getElementById('btn-active-alarm');
   if (appState.activeAlarm) {
     alarmBtn.classList.remove('hidden');
@@ -1637,22 +1930,29 @@ function renderHeroAndToday(dict) {
     alarmBtn.setAttribute('aria-label', labels.hero_alarm_aria);
   }
 
+  // Moon canvas
   renderMoonCanvas(document.getElementById('moon-canvas'), summary.phaseInfo);
 
+  // Center top row: Moon age (X.X) + zodiac sign superscript + localized unit
   const sign = summary.phaseInfo.zodiacSign;
   const signName = getLocalizedZodiacSign(dict, sign);
   document.getElementById('hero-day').textContent = summary.phaseInfo.moonAge.toFixed(1);
   document.getElementById('hero-sup-top').textContent = signName;
   document.getElementById('hero-age-unit').textContent = labels.moon_age_unit;
+
+  // Center bottom row: symmetrical lunar day pair with start time superscripts above both numbers
   document.getElementById('hero-lunar-first').textContent = String(summary.firstDay);
   document.getElementById('hero-lunar-second').textContent = String(summary.secondDay);
   document.getElementById('hero-lunar-first-time').textContent = summary.firstDayStartTimeStr;
   document.getElementById('hero-lunar-second-time').textContent = summary.secondDayStartTimeStr;
   document.getElementById('hero-lunar-slot-first').classList.toggle('is-active', summary.activeIndex === 0);
   document.getElementById('hero-lunar-slot-second').classList.toggle('is-active', summary.activeIndex === 1);
+
+  // Center third row: moonrise and moonset times for selected calendar day
   document.getElementById('hero-moonrise').textContent = summary.moonriseStr || '--:--';
   document.getElementById('hero-moonset').textContent = summary.moonsetStr || '--:--';
 
+  // Top-right trend glyph + exact 8-phase localized tooltip
   const trendLabel = dict.moon_trends?.[summary.phaseInfo.trend] || '';
   const detailedTrendLabel =
     dict.moon_phase_names?.[summary.phaseInfo.detailedTrend] ||
@@ -1663,6 +1963,7 @@ function renderHeroAndToday(dict) {
   trendEl.title = detailedTrendLabel;
   trendEl.setAttribute('aria-label', detailedTrendLabel);
 
+  // Context bar above timeline: "<Phase badge> · <Date>" in State B, "<Date>" in State A
   const humanDate = formatHumanDate(selectedDate, lang);
   const dateLabel = personal
     ? `${dict.phases[personal.phaseKey]?.badge || ''} · ${humanDate}`
@@ -1673,20 +1974,20 @@ function renderHeroAndToday(dict) {
   const zodiacHint = dict.zodiac_hints?.[sign] || '';
   const lunarDayNote = dict.lunar_days?.[String(summary.activeLunarDay)] || '';
   const dayStatus = resolveDayStatus(personal, summary, dict, labels);
+
   const phaseKeyForTips = personal
     ? personal.phaseKey
     : mapGuestPhaseKey(summary.phaseInfo.detailedTrend);
   const dayInPhaseForTips = personal ? personal.phaseStage.dayInPhase : 1;
+
   const dateSeed = toISODate(selectedDate);
   const dayTheme = getDayTheme(dict, sign);
   const dayThemeFocus = dayTheme?.focus || '';
-
   const tips = {
     morning: getRotatedLifestyleTip(dict, phaseKeyForTips, 'morning', summary.activeLunarDay, dayInPhaseForTips, dateSeed),
     day: getRotatedLifestyleTip(dict, phaseKeyForTips, 'day', summary.activeLunarDay, dayInPhaseForTips, dateSeed),
     evening: getRotatedLifestyleTip(dict, phaseKeyForTips, 'evening', summary.activeLunarDay, dayInPhaseForTips, dateSeed)
   };
-
   const windowCues = {
     morning: getWindowFocusCue(dict, 'morning', dateSeed),
     day: getWindowFocusCue(dict, 'day', dateSeed),
@@ -1727,6 +2028,7 @@ function renderHeroAndToday(dict) {
       edgeDetail = {
         actorTitle: actor.title,
         maneuverTitle: maneuver?.title || '',
+        valence: maneuver?.valence || 'neutral',
         scenarioAdvice: getEdgeScenarioAdvice(dict, top),
         dynamicText: dict.aspect_dynamics?.[top.dynamicKey] || ''
       };
@@ -1739,6 +2041,7 @@ function renderHeroAndToday(dict) {
       bgDetail = {
         actorTitle: bgActor.title,
         maneuverTitle: bgManeuver?.title || '',
+        valence: bgManeuver?.valence || 'neutral',
         advice: getEdgeScenarioAdvice(dict, bg),
         isExact: personal.isBackgroundExactPeak
       };
@@ -1760,7 +2063,8 @@ function renderHeroAndToday(dict) {
       }
     : null;
 
-  const introParagraph = buildTodayIntroText(baseLang, {
+  const introBlocks = buildTodayIntroText(baseLang, {
+    labels,
     isToday,
     isPersonal: Boolean(personal),
     statusKey: dayStatus.key,
@@ -1774,7 +2078,12 @@ function renderHeroAndToday(dict) {
     roleTitle,
     dayThemeFocus,
     activeLunarDay: summary.activeLunarDay,
+    firstDay: summary.firstDay,
+    secondDay: summary.secondDay,
+    activeIndex: summary.activeIndex,
+    transitionTimeStr: summary.transitionTimeStr,
     lunarDayFullLabel: labels.lunar_day_full,
+    lunarDayNote,
     canonicalSign: sign,
     signName,
     ingressInfo,
@@ -1783,15 +2092,42 @@ function renderHeroAndToday(dict) {
     illuminationStr: summary.phaseInfo.illuminationExact.toFixed(1)
   });
 
+  // Today cards container: 1 unified summary intro block + 3 Morning/Day/Evening cards
   const cardsEl = document.getElementById('today-cards');
   cardsEl.innerHTML = '';
 
   const summaryCard = document.createElement('article');
   summaryCard.className = 'surface-card today-summary-card';
   const summaryHeading = personal ? labels.today_course_heading : labels.today_guest_heading;
-  summaryCard.innerHTML = `<div class="card-title"></div> <p class="today-summary-text"></p>`;
-  summaryCard.querySelector('.card-title').textContent = summaryHeading;
-  summaryCard.querySelector('.today-summary-text').textContent = introParagraph;
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'card-title';
+  titleEl.textContent = summaryHeading;
+  summaryCard.appendChild(titleEl);
+
+  const mainPara = document.createElement('p');
+  mainPara.className = 'today-summary-text';
+  if (introBlocks.mainLabel) {
+    const lbl = document.createElement('strong');
+    lbl.className = 'today-inline-label';
+    lbl.textContent = `${introBlocks.mainLabel}: `;
+    mainPara.appendChild(lbl);
+  }
+  mainPara.appendChild(document.createTextNode(introBlocks.mainText));
+  summaryCard.appendChild(mainPara);
+
+  if (introBlocks.backdropText) {
+    const backdropPara = document.createElement('p');
+    backdropPara.className = 'today-summary-text today-backdrop-text';
+    if (introBlocks.backdropLabel) {
+      const bLbl = document.createElement('strong');
+      bLbl.className = 'today-inline-label';
+      bLbl.textContent = `${introBlocks.backdropLabel}: `;
+      backdropPara.appendChild(bLbl);
+    }
+    backdropPara.appendChild(document.createTextNode(introBlocks.backdropText));
+    summaryCard.appendChild(backdropPara);
+  }
   cardsEl.appendChild(summaryCard);
 
   const wMorningSign = summary.windows?.morning?.zodiacSign || sign;
@@ -1805,6 +2141,7 @@ function renderHeroAndToday(dict) {
   const slotCards = buildSlotCardsData(baseLang, {
     labels,
     isPersonal: Boolean(personal),
+    phaseKey: personal?.phaseKey,
     phaseVariantLine,
     phaseDayNote,
     roleTone,
@@ -1828,7 +2165,6 @@ function renderHeroAndToday(dict) {
     detailedTrendLabel,
     activeLunarDay: summary.activeLunarDay,
     lunarDayFullLabel: labels.lunar_day_full,
-    lunarDayNote,
     firstDay: summary.firstDay,
     secondDay: summary.secondDay,
     transitionTimeStr: summary.transitionTimeStr,
@@ -1849,7 +2185,10 @@ function renderHeroAndToday(dict) {
       stateClass = ' is-past';
     }
     slotCard.className = `surface-card slot-card${stateClass}`;
-    slotCard.innerHTML = `<div class="slot-card-title"></div> <p class="card-desc"></p>`;
+    slotCard.innerHTML = `
+      <div class="slot-card-title"></div>
+      <p class="card-desc"></p>
+    `;
     slotCard.querySelector('.slot-card-title').textContent = item.title;
     slotCard.querySelector('.card-desc').textContent = item.text;
     cardsEl.appendChild(slotCard);

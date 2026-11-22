@@ -574,6 +574,8 @@ export const DICT_DE = {
     "valence_neutral": "Akzent",
     "today_course_heading": "Tageskurs",
     "today_guest_heading": "Mond-Tageskurs",
+    "label_personal_resource": "Ihre Ressource",
+    "label_calendar_backdrop": "Kalender-Hintergrund",
     "day_status_favorable": "Günstig",
     "day_status_caution": "Mit Vorsicht",
     "day_status_refrain": "Besser zurückhalten",

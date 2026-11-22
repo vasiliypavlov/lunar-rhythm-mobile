@@ -574,6 +574,8 @@ export const DICT_FR = {
     "valence_neutral": "Accent",
     "today_course_heading": "Cap du jour",
     "today_guest_heading": "Cap lunaire du jour",
+    "label_personal_resource": "Votre Ressource",
+    "label_calendar_backdrop": "Contexte du Calendrier",
     "day_status_favorable": "Favorable",
     "day_status_caution": "Avec prudence",
     "day_status_refrain": "Mieux vaut s'abstenir",
