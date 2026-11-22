@@ -2720,8 +2720,7 @@ function getPlatformLabels() {
  * Mirrors showCheckpointNotification() from the extension's background.js.
  */
 function buildCheckpointContent(targetMoment, slot, dict, state) {
-  const baseDict = getActiveBaseDictionary();
-  const labels = { ...baseDict.ui_labels, ...(dict.ui_labels || {}) };
+  const labels = getUILabels(dict);
   const summary = getCalendarDayLunarSummary(targetMoment, targetMoment);
   const signLabel = getLocalizedZodiacSign(dict, summary.phaseInfo.zodiacSign);
 
@@ -2766,7 +2765,7 @@ function buildCheckpointContent(targetMoment, slot, dict, state) {
  * Builds the content of a lunar alarm notification.
  */
 function buildAlarmContent(reminder, dict) {
-  const labels = dict.ui_labels || {};
+  const labels = getUILabels(dict);
   return {
     title: `${labels.app_title} · ${reminder.lunarDay} ${labels.lunar_day_short}`,
     body: reminder.text || labels.reminder_prefix_tts || ''
@@ -2858,26 +2857,28 @@ async function rescheduleNotifications() {
 
   // Lunar alarms: 1..30 lunar days and specific calendar dates.
   const enabledReminders = state.reminders.filter((reminder) => reminder.enabled);
-  enabledReminders.forEach((reminder, reminderIndex) => {
-    const occurrences = computeAlarmOccurrences(reminder);
-    const content = buildAlarmContent(reminder, dict);
-    occurrences.forEach((at, occurrenceIndex) => {
-      scheduled.push({
-        id: notifications.alarmNotificationId(reminderIndex, occurrenceIndex),
-        title: content.title,
-        body: content.body,
-        channelId: notifications.CHANNEL_ALARM,
-        schedule: { at, allowWhileIdle: true },
-        extra: {
-          kind: 'reminder',
-          reminderId: reminder.id,
-          lunarDay: reminder.lunarDay,
-          text: reminder.text || '',
-          at: at.getTime()
-        }
+  if (state.notifications.alarmPushEnabled) {
+    enabledReminders.forEach((reminder, reminderIndex) => {
+      const occurrences = computeAlarmOccurrences(reminder);
+      const content = buildAlarmContent(reminder, dict);
+      occurrences.forEach((at, occurrenceIndex) => {
+        scheduled.push({
+          id: notifications.alarmNotificationId(reminderIndex, occurrenceIndex),
+          title: content.title,
+          body: content.body,
+          channelId: notifications.CHANNEL_ALARM,
+          schedule: { at, allowWhileIdle: true },
+          extra: {
+            kind: 'reminder',
+            reminderId: reminder.id,
+            lunarDay: reminder.lunarDay,
+            text: reminder.text || '',
+            at: at.getTime()
+          }
+        });
       });
     });
-  });
+  }
 
   const scheduledIds = await notifications.schedule(scheduled);
   await stateStore.saveState({ scheduledNotificationIds: scheduledIds });
@@ -2928,7 +2929,7 @@ async function syncAlarmState() {
       const dict = getActiveDictionary();
       patch.activeAlarm = {
         id: fired.id,
-        text: fired.text || dict.ui_labels?.reminder_prefix_tts || '',
+        text: fired.text || getUILabels(dict).reminder_prefix_tts || '',
         lunarDay: fired.lunarDay,
         triggeredAt: Date.now()
       };
@@ -3035,7 +3036,7 @@ function bindEvents() {
     appState.activeAlarm = null;
     await stateStore.saveState({ activeAlarm: null });
     renderUI();
-    await speakText(alarmText, dict.ui_labels.reminder_prefix_tts);
+    await speakText(alarmText, getUILabels(dict).reminder_prefix_tts);
   });
 
   // Copy External AI Prompt (compact 28x28 icon expanding into 2s confirmation pill)
@@ -3206,6 +3207,7 @@ function bindEvents() {
         appState.birthDate = directIso;
         await stateStore.saveState({ birthDate: directIso });
         renderUI();
+        void rescheduleNotifications();
       }
       return;
     }
@@ -3221,6 +3223,7 @@ function bindEvents() {
         appState.birthDate = null;
         await stateStore.saveState({ birthDate: null });
         renderUI();
+        void rescheduleNotifications();
       }
       return;
     }
@@ -3231,6 +3234,7 @@ function bindEvents() {
         appState.birthDate = parsedIso;
         await stateStore.saveState({ birthDate: parsedIso });
         renderUI();
+        void rescheduleNotifications();
       }
     }
   });
@@ -3242,6 +3246,7 @@ function bindEvents() {
         appState.birthDate = null;
         await stateStore.saveState({ birthDate: null });
         renderUI();
+        void rescheduleNotifications();
       }
       return;
     }
@@ -3252,6 +3257,7 @@ function bindEvents() {
         appState.birthDate = parsedIso;
         await stateStore.saveState({ birthDate: parsedIso });
         renderUI();
+        void rescheduleNotifications();
       }
     } else {
       e.target.value = formatIsoToDisplayDate(appState.birthDate);
@@ -3265,6 +3271,7 @@ function bindEvents() {
       birthInputEl.value = formatIsoToDisplayDate(iso);
       await stateStore.saveState({ birthDate: appState.birthDate });
       renderUI();
+      void rescheduleNotifications();
     });
   }
 
@@ -3272,6 +3279,7 @@ function bindEvents() {
     appState.birthTime = e.target.value || null;
     await stateStore.saveState({ birthTime: appState.birthTime });
     renderUI();
+    void rescheduleNotifications();
   });
 
   document.getElementById('btn-clear-birth').addEventListener('click', async () => {
@@ -3279,6 +3287,7 @@ function bindEvents() {
     appState.birthTime = null;
     await stateStore.saveState({ birthDate: null, birthTime: null });
     renderUI();
+    void rescheduleNotifications();
   });
 
   // Notifications (3 independent checkpoint toggles + alarm push notifications)
@@ -3335,12 +3344,14 @@ function bindEvents() {
     appState.selectedVoiceURI = '';
     await stateStore.saveState({ builtinLang: nextLang, selectedVoiceURI: '' });
     renderUI();
+    void rescheduleNotifications();
   });
 
   document.getElementById('dict-mode-default').addEventListener('click', async () => {
     appState.dictionaryMode = 'default';
     await stateStore.saveState({ dictionaryMode: 'default' });
     renderUI();
+    void rescheduleNotifications();
   });
 
   document.getElementById('dict-mode-custom').addEventListener('click', async () => {
@@ -3356,6 +3367,7 @@ function bindEvents() {
     appState.dictionaryMode = 'custom';
     await stateStore.saveState({ dictionaryMode: 'custom' });
     renderUI();
+    void rescheduleNotifications();
   });
 
   document.getElementById('btn-download-template').addEventListener('click', () => {
@@ -3386,7 +3398,8 @@ function bindEvents() {
       const validKeys = [
         'meta', 'profiles', 'phases', 'phase_day_notes', 'roles', 'age_classes',
         'actors', 'moon_trends', 'moon_phase_names', 'zodiac_names', 'zodiac_hints', 'lunar_days',
-        'aspect_dynamics', 'maneuvers', 'actor_maneuver_matrix', 'lifestyle_tips', 'ui_labels'
+        'aspect_dynamics', 'maneuvers', 'actor_maneuver_matrix', 'lifestyle_tips',
+        'day_themes', 'phase_variants', 'role_tone', 'window_focus', 'ui_labels'
       ];
       const hasKnownSection =
         parsed &&
@@ -3410,6 +3423,7 @@ function bindEvents() {
       status.classList.remove('hidden', 'error');
       status.textContent = `${nextLabels.msg_dict_loaded}: ${merged.meta?.name || file.name}`;
       renderUI();
+      void rescheduleNotifications();
     } catch (err) {
       status.classList.remove('hidden');
       status.classList.add('error');
@@ -3494,7 +3508,7 @@ async function handlePendingAutoplay() {
       await stateStore.saveState({ activeAlarm: null });
       renderUI();
     }
-    await speakText(pending.text, dict.ui_labels.reminder_prefix_tts);
+    await speakText(pending.text, getUILabels(dict).reminder_prefix_tts);
   } else {
     await speakText(buildBriefingSpeechText());
   }
@@ -3521,7 +3535,7 @@ function registerNotificationHandlers() {
         await stateStore.saveState({ activeAlarm: null });
         renderUI();
       }
-      await speakText(text, dict.ui_labels?.reminder_prefix_tts || '');
+      await speakText(text, getUILabels(dict).reminder_prefix_tts || '');
       return;
     }
 
