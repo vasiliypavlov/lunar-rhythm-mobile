@@ -1,0 +1,119 @@
+name: Build APK
+
+# Сборка Android-приложения «Ритм Дня» (Capacitor) в .apk.
+#
+# Android-проект не хранится в репозитории: он генерируется на лету командой
+# `npx cap add android`, после чего в AndroidManifest.xml добавляются нужные
+# разрешения и собирается готовый .apk.
+#
+# Готовый файл скачивается во вкладке Actions → Artifacts.
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Сборка .apk (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Установка Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # Capacitor 6 использует Android Gradle Plugin 8.2 — требуется JDK 17.
+      - name: Установка JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Установка Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Кэш Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Установка зависимостей
+        run: npm ci --no-audit --no-fund
+
+      - name: Инициализация Android-платформы
+        run: |
+          if [ -d "android" ]; then
+            echo "Каталог android/ уже существует — плагины будут обновлены на шаге cap sync."
+          else
+            npx cap add android
+          fi
+
+      - name: Разрешения в AndroidManifest.xml и иконки
+        run: node scripts/prepare-android.mjs
+
+      - name: Синхронизация веб-ресурсов и плагинов
+        run: npx cap sync android
+
+      - name: Сборка debug APK (устанавливаемый, подписан ключом отладки)
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Сборка unsigned release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Проверка наличия артефактов
+        run: |
+          set -e
+          ls -la android/app/build/outputs/apk/debug/
+          ls -la android/app/build/outputs/apk/release/
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+          test -f android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Загрузка debug APK в Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunar-rhythm-mobile-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Загрузка unsigned release APK в Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunar-rhythm-mobile-release-unsigned-apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Краткая сводка
+        run: |
+          echo "### Готово ✅" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Debug APK (можно установить сразу):**" >> "$GITHUB_STEP_SUMMARY"
+          echo '`lunar-rhythm-mobile-debug-apk` → `app-debug.apk`' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Release APK (без подписи, требует собственного ключа):**" >> "$GITHUB_STEP_SUMMARY"
+          echo '`lunar-rhythm-mobile-release-unsigned-apk` → `app-release-unsigned.apk`' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Скачайте файлы во вкладке **Actions** → **Artifacts** → нужный артефакт." >> "$GITHUB_STEP_SUMMARY"

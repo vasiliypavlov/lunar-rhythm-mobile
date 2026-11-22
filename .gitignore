@@ -1,0 +1,36 @@
+# Зависимости
+node_modules/
+
+# Android-проект генерируется командой `npx cap add android`
+android/
+ios/
+
+# Сборка
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+dist/
+build/
+app/build/
+
+# Локальное окружение
+.env
+.env.local
+local.properties
+
+# Логи
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Редакторы и ОС
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Временные файлы
+.cache/
+tmp/

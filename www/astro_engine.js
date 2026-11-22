@@ -1,0 +1,1459 @@
+// Autonomous Offline Astronomical & Aspect Graph Engine
+// Based on Jean Meeus (Astronomical Algorithms) & Paul Schlyter orbital series
+
+export const SYNODIC_MONTH = 29.530588853;
+const DEG2RAD = Math.PI / 180;
+const RAD2DEG = 180 / Math.PI;
+const J2000 = 2451545.0;
+
+export const ZODIAC_SIGNS = [
+  'Овен', 'Телец', 'Близнецы', 'Рак',
+  'Лев', 'Дева', 'Весы', 'Скорпион',
+  'Стрелец', 'Козерог', 'Водолей', 'Рыбы'
+];
+
+export const PHASE_COLORS = {
+  neutral: '#3F3F3F',
+  phase_peak: '#1B5E20',
+  phase_decline: '#1A3A5C',
+  phase_minimum: '#9E140B',
+  phase_rise: '#8D4918'
+};
+
+export function norm360(deg) {
+  const r = deg % 360;
+  return r < 0 ? r + 360 : r;
+}
+
+export function signedAngleDiff(a, b) {
+  let d = (a - b) % 360;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  return d;
+}
+
+function sinD(deg) { return Math.sin(deg * DEG2RAD); }
+function cosD(deg) { return Math.cos(deg * DEG2RAD); }
+
+export function toJulianDay(date) {
+  const ms = date instanceof Date ? date.getTime() : Number(date);
+  return ms / 86400000 + 2440587.5;
+}
+
+export function fromJulianDay(jd) {
+  return new Date((jd - 2440587.5) * 86400000);
+}
+
+// High-precision Sun apparent ecliptic longitude (Meeus Ch. 25, <0.01 deg)
+export function getSunPosition(jd) {
+  const T = (jd - J2000) / 36525;
+  const L0 = norm360(280.46646 + 36000.76983 * T + 0.0003032 * T * T);
+  const M = norm360(357.52911 + 35999.05029 * T - 0.0001537 * T * T);
+  const e = 0.016708634 - 0.000042037 * T - 0.0000001267 * T * T;
+  const C =
+    (1.914602 - 0.004817 * T - 0.000014 * T * T) * sinD(M) +
+    (0.019993 - 0.000101 * T) * sinD(2 * M) +
+    0.000289 * sinD(3 * M);
+  const trueLon = L0 + C;
+  const v = M + C;
+  const R = (1.000001018 * (1 - e * e)) / (1 + e * cosD(v));
+  const omega = 125.04 - 1934.136 * T;
+  const apparentLon = norm360(trueLon - 0.00569 - 0.00478 * sinD(omega));
+  return { lon: apparentLon, radiusAU: R };
+}
+
+// High-precision Moon ecliptic & equatorial coordinates (Meeus Ch. 47)
+const MOON_LON_TERMS = [
+  [0, 0, 1, 0, 6288774],
+  [2, 0, -1, 0, 1274027],
+  [2, 0, 0, 0, 658314],
+  [0, 0, 2, 0, 213618],
+  [0, 1, 0, 0, -185116],
+  [0, 0, 0, 2, -114332],
+  [2, 0, -2, 0, 58793],
+  [2, -1, -1, 0, 57066],
+  [2, 0, 1, 0, 53322],
+  [2, -1, 0, 0, 45758],
+  [0, 1, -1, 0, -40923],
+  [1, 0, 0, 0, -34720],
+  [0, 1, 1, 0, -30383],
+  [2, 0, 0, -2, 15327],
+  [0, 0, 1, 2, -12528],
+  [0, 0, 1, -2, 10980],
+  [4, 0, -1, 0, 10675],
+  [0, 0, 3, 0, 10034],
+  [4, 0, -2, 0, 8548],
+  [2, 1, -1, 0, -7888],
+  [2, 1, 0, 0, -6766],
+  [1, 0, -1, 0, -5163],
+  [1, 1, 0, 0, 4987],
+  [2, -1, 1, 0, 4036]
+];
+
+const MOON_DIST_TERMS = [
+  [0, 0, 1, 0, -20905355],
+  [2, 0, -1, 0, -3699111],
+  [2, 0, 0, 0, -2955968],
+  [0, 0, 2, 0, -569925],
+  [0, 1, 0, 0, 48888],
+  [0, 0, 0, 2, -3149],
+  [2, 0, -2, 0, 246158],
+  [2, -1, -1, 0, -152138],
+  [2, 0, 1, 0, -170733],
+  [2, -1, 0, 0, -204586]
+];
+
+const MOON_LAT_TERMS = [
+  [0, 0, 0, 1, 5128122],
+  [0, 0, 1, 1, 280602],
+  [0, 0, 1, -1, 277693],
+  [2, 0, 0, -1, 173237],
+  [2, 0, -1, 1, 55413],
+  [2, 0, -1, -1, 46271],
+  [2, 0, 0, 1, 32573],
+  [0, 0, 2, 1, 17198],
+  [2, 0, 1, -1, 9266],
+  [0, 0, 2, -1, 8822]
+];
+
+export function getMoonPosition(jd) {
+  const T = (jd - J2000) / 36525;
+  const T2 = T * T;
+  const T3 = T2 * T;
+  const T4 = T3 * T;
+
+  const Lp = norm360(218.3164477 + 481267.88123421 * T - 0.0015786 * T2 + T3 / 538841 - T4 / 65194000);
+  const D = norm360(297.8501921 + 445267.1114034 * T - 0.0018819 * T2 + T3 / 545868 - T4 / 113065000);
+  const M = norm360(357.5291092 + 35999.0502909 * T - 0.0001536 * T2 + T3 / 24490000);
+  const Mp = norm360(134.9633964 + 477198.8675055 * T + 0.0087414 * T2 + T3 / 69699 - T4 / 14712000);
+  const F = norm360(93.2720950 + 483202.0175233 * T - 0.0036539 * T2 - T3 / 3526000 + T4 / 863310000);
+
+  const A1 = norm360(119.75 + 131.849 * T);
+  const A2 = norm360(53.09 + 479264.290 * T);
+  const A3 = norm360(313.45 + 481266.484 * T);
+  const E = 1 - 0.002516 * T - 0.0000074 * T2;
+  const E2 = E * E;
+
+  let sumL = 0;
+  for (let i = 0; i < MOON_LON_TERMS.length; i++) {
+    const [d, m, mp, f, coeff] = MOON_LON_TERMS[i];
+    const mult = Math.abs(m) === 1 ? E : Math.abs(m) === 2 ? E2 : 1;
+    sumL += coeff * mult * sinD(d * D + m * M + mp * Mp + f * F);
+  }
+  sumL += 3958 * sinD(A1) + 1962 * sinD(Lp - F) + 318 * sinD(A2);
+
+  let sumR = 0;
+  for (let i = 0; i < MOON_DIST_TERMS.length; i++) {
+    const [d, m, mp, f, coeff] = MOON_DIST_TERMS[i];
+    const mult = Math.abs(m) === 1 ? E : 1;
+    sumR += coeff * mult * cosD(d * D + m * M + mp * Mp + f * F);
+  }
+
+  let sumB = 0;
+  for (let i = 0; i < MOON_LAT_TERMS.length; i++) {
+    const [d, m, mp, f, coeff] = MOON_LAT_TERMS[i];
+    const mult = Math.abs(m) === 1 ? E : 1;
+    sumB += coeff * mult * sinD(d * D + m * M + mp * Mp + f * F);
+  }
+  sumB += -2235 * sinD(Lp) + 382 * sinD(A3) + 175 * sinD(A1 - F) + 175 * sinD(A1 + F);
+
+  const lon = norm360(Lp + sumL / 1000000);
+  const lat = sumB / 1000000;
+  const distKm = 385000.56 + sumR / 1000;
+
+  // Mean obliquity of ecliptic
+  const eps = 23.439291 - 0.0130042 * T;
+  const sinLambda = sinD(lon);
+  const cosLambda = cosD(lon);
+  const sinBeta = sinD(lat);
+  const cosBeta = cosD(lat);
+  const sinEps = sinD(eps);
+  const cosEps = cosD(eps);
+
+  const raRad = Math.atan2(sinLambda * cosEps - (sinBeta / cosBeta) * sinEps, cosLambda);
+  const decRad = Math.asin(sinBeta * cosEps + cosBeta * sinEps * sinLambda);
+
+  return {
+    lon,
+    lat,
+    distKm,
+    ra: norm360(raRad * RAD2DEG),
+    dec: decRad * RAD2DEG
+  };
+}
+
+export function getZodiacSign(lon) {
+  const idx = Math.floor(norm360(lon) / 30) % 12;
+  return ZODIAC_SIGNS[idx];
+}
+
+// Find exact New Moon JD near jdApprox
+function refineNewMoon(jdCenter) {
+  let lo = jdCenter - 2.0;
+  let hi = jdCenter + 2.0;
+  // Bracket sign change from negative to positive elongation
+  const step = 0.25;
+  for (let t = lo; t < hi; t += step) {
+    const d1 = signedAngleDiff(getMoonPosition(t).lon, getSunPosition(t).lon);
+    const d2 = signedAngleDiff(getMoonPosition(t + step).lon, getSunPosition(t + step).lon);
+    if (d1 <= 0 && d2 >= 0) {
+      lo = t;
+      hi = t + step;
+      break;
+    }
+  }
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) * 0.5;
+    const dm = signedAngleDiff(getMoonPosition(mid).lon, getSunPosition(mid).lon);
+    if (dm < 0) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) * 0.5;
+}
+
+const lunationCache = new Map();
+
+export function findNewMoonBefore(jd) {
+  // Reference New Moon: Jan 6 2000 18:14 UT = 2451550.2597
+  const kApprox = Math.floor((jd - 2451550.2597) / SYNODIC_MONTH);
+  let nm = refineNewMoon(2451550.2597 + kApprox * SYNODIC_MONTH);
+  if (nm > jd) {
+    nm = refineNewMoon(2451550.2597 + (kApprox - 1) * SYNODIC_MONTH);
+  }
+  const nmNextCheck = refineNewMoon(nm + SYNODIC_MONTH);
+  if (nmNextCheck <= jd) {
+    nm = nmNextCheck;
+  }
+  return nm;
+}
+
+function getObserverCoords() {
+  // Derive observer longitude from browser timezone offset; clamp latitude to 50 deg N
+  // so the Moon rises and sets reliably every lunar orbit without polar edge cases.
+  const offsetMin = new Date().getTimezoneOffset(); // UTC - local in minutes
+  const lonDeg = -offsetMin / 4;
+  return { latDeg: 50.0, lonDeg };
+}
+
+function getMoonAltitudeDeg(jd, latDeg, lonDeg) {
+  const moon = getMoonPosition(jd);
+  const T = (jd - J2000) / 36525;
+  const d = jd - J2000;
+  const gmst = norm360(280.46061837 + 360.98564736629 * d + 0.000387933 * T * T);
+  const lst = norm360(gmst + lonDeg);
+  const H = norm360(lst - moon.ra);
+  const sinAlt = sinD(latDeg) * sinD(moon.dec) + cosD(latDeg) * cosD(moon.dec) * cosD(H);
+  const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * RAD2DEG;
+  // Apparent horizon target for Moon center (refraction + semidiameter - horizontal parallax ~ +0.125 deg)
+  const parallax = Math.asin(6378.14 / moon.distKm) * RAD2DEG;
+  const h0 = parallax - 0.5667 - 0.25;
+  return alt - h0;
+}
+
+function findMoonHorizonEventsBetween(jdStart, jdEnd, latDeg, lonDeg) {
+  const rises = [];
+  const sets = [];
+  const step = 1 / 48; // 30 minutes
+  let prevT = jdStart;
+  let prevH = getMoonAltitudeDeg(prevT, latDeg, lonDeg);
+
+  for (let t = jdStart + step; t <= jdEnd + step; t += step) {
+    const clampedT = Math.min(t, jdEnd);
+    const curH = getMoonAltitudeDeg(clampedT, latDeg, lonDeg);
+    if (prevH <= 0 && curH > 0) {
+      let lo = prevT;
+      let hi = clampedT;
+      for (let i = 0; i < 16; i++) {
+        const mid = (lo + hi) * 0.5;
+        if (getMoonAltitudeDeg(mid, latDeg, lonDeg) <= 0) lo = mid;
+        else hi = mid;
+      }
+      const riseJD = (lo + hi) * 0.5;
+      if (riseJD > jdStart + 0.0007 && riseJD < jdEnd - 0.0007) {
+        rises.push(riseJD);
+      }
+    } else if (prevH >= 0 && curH < 0) {
+      let lo = prevT;
+      let hi = clampedT;
+      for (let i = 0; i < 16; i++) {
+        const mid = (lo + hi) * 0.5;
+        if (getMoonAltitudeDeg(mid, latDeg, lonDeg) >= 0) lo = mid;
+        else hi = mid;
+      }
+      const setJD = (lo + hi) * 0.5;
+      if (setJD > jdStart + 0.0007 && setJD < jdEnd - 0.0007) {
+        sets.push(setJD);
+      }
+    }
+    prevT = clampedT;
+    prevH = curH;
+    if (clampedT >= jdEnd) break;
+  }
+  return { rises, sets };
+}
+
+function findMoonrisesBetween(jdStart, jdEnd, latDeg, lonDeg) {
+  return findMoonHorizonEventsBetween(jdStart, jdEnd, latDeg, lonDeg).rises;
+}
+
+export function getLunationIntervals(jd) {
+  const nmPrev = findNewMoonBefore(jd);
+  const cacheKey = Math.round(nmPrev * 100);
+  if (lunationCache.has(cacheKey)) {
+    return lunationCache.get(cacheKey);
+  }
+  const nmNext = refineNewMoon(nmPrev + SYNODIC_MONTH);
+  const { latDeg, lonDeg } = getObserverCoords();
+  const rises = findMoonrisesBetween(nmPrev, nmNext, latDeg, lonDeg);
+
+  const intervals = [];
+  let cursor = nmPrev;
+  let dayNum = 1;
+  for (let i = 0; i < rises.length && dayNum < 30; i++) {
+    intervals.push({ day: dayNum, startJD: cursor, endJD: rises[i], startsBy: i === 0 ? 'new_moon' : 'moonrise' });
+    cursor = rises[i];
+    dayNum++;
+  }
+  intervals.push({ day: dayNum, startJD: cursor, endJD: nmNext, startsBy: 'moonrise' });
+
+  const payload = { nmPrev, nmNext, intervals };
+  lunationCache.set(cacheKey, payload);
+  return payload;
+}
+
+export function getLunarDayAt(date) {
+  const jd = toJulianDay(date);
+  const { intervals } = getLunationIntervals(jd);
+  for (let i = 0; i < intervals.length; i++) {
+    if (jd >= intervals[i].startJD && jd < intervals[i].endJD) {
+      return intervals[i];
+    }
+  }
+  return intervals[intervals.length - 1];
+}
+
+export function formatHM(date) {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+export function getMoonPhaseInfo(date) {
+  const jd = toJulianDay(date);
+  const sun = getSunPosition(jd);
+  const moon = getMoonPosition(jd);
+  const elong = norm360(moon.lon - sun.lon);
+  const illumination = (1 - cosD(elong)) * 0.5;
+  const isWaxing = elong < 180;
+  const nmPrev = findNewMoonBefore(jd);
+  const moonAge = Math.max(0, jd - nmPrev);
+
+  let trend = isWaxing ? 'waxing' : 'waning';
+  let trendGlyph = isWaxing ? '▲' : '▼';
+  if (elong <= 7 || elong >= 353) {
+    trend = 'new';
+    trendGlyph = '○';
+  } else if (Math.abs(elong - 180) <= 7) {
+    trend = 'full';
+    trendGlyph = '●';
+  }
+
+  let detailedTrend = 'waxing_gibbous';
+  if (elong <= 7 || elong >= 353) {
+    detailedTrend = 'new_moon';
+  } else if (elong < 83) {
+    detailedTrend = 'waxing_crescent';
+  } else if (elong <= 97) {
+    detailedTrend = 'first_quarter';
+  } else if (elong < 173) {
+    detailedTrend = 'waxing_gibbous';
+  } else if (elong <= 187) {
+    detailedTrend = 'full_moon';
+  } else if (elong < 263) {
+    detailedTrend = 'waning_gibbous';
+  } else if (elong <= 277) {
+    detailedTrend = 'last_quarter';
+  } else {
+    detailedTrend = 'waning_crescent';
+  }
+
+  return {
+    jd,
+    elong,
+    illumination,
+    illuminationPct: Math.round(illumination * 100),
+    illuminationExact: Number((illumination * 100).toFixed(1)),
+    isWaxing,
+    trend,
+    detailedTrend,
+    trendGlyph,
+    moonAge,
+    moonLon: moon.lon,
+    sunLon: sun.lon,
+    zodiacSign: getZodiacSign(moon.lon)
+  };
+}
+
+export function getCalendarDayLunarSummary(calendarDate, referenceMoment = null) {
+  const dayStart = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), calendarDate.getDate(), 0, 0, 0, 0);
+  const dayEnd = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), calendarDate.getDate(), 23, 59, 59, 999);
+  const ref = referenceMoment || new Date(calendarDate.getFullYear(), calendarDate.getMonth(), calendarDate.getDate(), 12, 0, 0, 0);
+
+  const startJD = toJulianDay(dayStart);
+  const endJD = toJulianDay(dayEnd);
+  const refJD = toJulianDay(ref);
+
+  // Collect intervals spanning dayStart to dayEnd (may cross lunation boundary)
+  const lun1 = getLunationIntervals(startJD);
+  const lun2 = endJD >= lun1.nmNext ? getLunationIntervals(endJD) : null;
+  const allIntervals = lun2 ? [...lun1.intervals, ...lun2.intervals] : lun1.intervals;
+
+  let activeInterval = allIntervals.find(iv => refJD >= iv.startJD && refJD < iv.endJD) || allIntervals[0];
+
+  // Find transition falling inside [startJD, endJD]
+  let transitionInterval = null;
+  for (let i = 0; i < allIntervals.length; i++) {
+    const iv = allIntervals[i];
+    if (iv.startJD > startJD && iv.startJD <= endJD) {
+      transitionInterval = iv;
+    }
+  }
+
+  let firstDay = activeInterval.day;
+  let secondDay = activeInterval.day;
+  let activeIndex = 0;
+  let firstDayStartTimeStr = '';
+  let secondDayStartTimeStr = '';
+  let transitionTimeStr = '';
+
+  if (transitionInterval) {
+    const idx = allIntervals.indexOf(transitionInterval);
+    const prevIv = idx > 0 ? allIntervals[idx - 1] : getLunarDayAt(fromJulianDay(transitionInterval.startJD - 0.05));
+    firstDay = prevIv.day;
+    secondDay = transitionInterval.day;
+    activeIndex = refJD >= transitionInterval.startJD ? 1 : 0;
+    firstDayStartTimeStr = formatHM(fromJulianDay(prevIv.startJD));
+    secondDayStartTimeStr = formatHM(fromJulianDay(transitionInterval.startJD));
+    transitionTimeStr = secondDayStartTimeStr;
+  } else {
+    const idx = allIntervals.indexOf(activeInterval);
+    const nextIv = idx >= 0 && idx + 1 < allIntervals.length
+      ? allIntervals[idx + 1]
+      : getLunarDayAt(fromJulianDay(activeInterval.endJD + 0.01));
+    firstDay = activeInterval.day;
+    secondDay = nextIv.day;
+    activeIndex = 0;
+    firstDayStartTimeStr = formatHM(fromJulianDay(activeInterval.startJD));
+    secondDayStartTimeStr = formatHM(fromJulianDay(nextIv.startJD));
+    transitionTimeStr = formatHM(fromJulianDay(activeInterval.endJD));
+  }
+
+  const phaseInfo = getMoonPhaseInfo(ref);
+  const { latDeg, lonDeg } = getObserverCoords();
+  const horizonEvents = findMoonHorizonEventsBetween(startJD, endJD, latDeg, lonDeg);
+  const moonriseStr = horizonEvents.rises.length
+    ? formatHM(fromJulianDay(horizonEvents.rises[0]))
+    : '--:--';
+  const moonsetStr = horizonEvents.sets.length
+    ? formatHM(fromJulianDay(horizonEvents.sets[0]))
+    : '--:--';
+
+  const mkWindow = (hour) => {
+    const dt = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), calendarDate.getDate(), hour, 0, 0, 0);
+    const info = getMoonPhaseInfo(dt);
+    return {
+      hour,
+      zodiacSign: info.zodiacSign,
+      detailedTrend: info.detailedTrend,
+      moonLon: Number(info.moonLon.toFixed(2))
+    };
+  };
+  const windows = {
+    morning: mkWindow(9),
+    day: mkWindow(14),
+    evening: mkWindow(20)
+  };
+
+  return {
+    calendarDay: calendarDate.getDate(),
+    activeLunarDay: activeInterval.day,
+    firstDay,
+    secondDay,
+    activeIndex,
+    firstDayStartTimeStr,
+    secondDayStartTimeStr,
+    transitionTimeStr,
+    moonriseStr,
+    moonsetStr,
+    windows,
+    phaseInfo
+  };
+}
+
+export function findNextDateForLunarDay(targetLunarDay, afterDate = new Date()) {
+  const startMs = afterDate.getTime();
+  // Search up to 62 days forward in 2-hour increments to catch short lunar days accurately
+  for (let h = 1; h <= 62 * 24; h += 2) {
+    const checkDate = new Date(startMs + h * 3600000);
+    const iv = getLunarDayAt(checkDate);
+    if (iv.day === targetLunarDay) {
+      const exactStart = fromJulianDay(iv.startJD);
+      if (exactStart.getTime() > startMs) {
+        return exactStart;
+      }
+      return checkDate;
+    }
+  }
+  return new Date(startMs + 86400000);
+}
+
+// =========================================================================
+// Planetary Geocentric Longitudes (Schlyter / Meeus Keplerian + Perturbations)
+// =========================================================================
+
+const PLANET_ELEMENTS = {
+  Mercury: {
+    N: [48.3313, 3.24587e-5],
+    i: [7.0047, 5.00e-8],
+    w: [29.1241, 1.01444e-5],
+    a: 0.387098,
+    e: [0.205635, 5.59e-10],
+    M: [168.6562, 4.0923344368]
+  },
+  Venus: {
+    N: [76.6799, 2.46590e-5],
+    i: [3.3946, 2.75e-8],
+    w: [54.8910, 1.38374e-5],
+    a: 0.723330,
+    e: [0.006773, -1.302e-9],
+    M: [48.0052, 1.6021302244]
+  },
+  Mars: {
+    N: [49.5574, 2.11081e-5],
+    i: [1.8497, -1.78e-8],
+    w: [286.5016, 2.92961e-5],
+    a: 1.523688,
+    e: [0.093405, 2.516e-9],
+    M: [18.6021, 0.5240207766]
+  },
+  Jupiter: {
+    N: [100.4542, 2.76854e-5],
+    i: [1.3030, -1.557e-7],
+    w: [273.8777, 1.64505e-5],
+    a: 5.20256,
+    e: [0.048498, 4.469e-9],
+    M: [19.8950, 0.0830853001]
+  },
+  Saturn: {
+    N: [113.6634, 2.38980e-5],
+    i: [2.4886, -1.081e-7],
+    w: [339.3939, 2.97661e-5],
+    a: 9.55475,
+    e: [0.055546, -9.499e-9],
+    M: [316.9670, 0.0334442282]
+  },
+  Uranus: {
+    N: [74.0005, 1.3978e-5],
+    i: [0.7733, 1.9e-8],
+    w: [96.6612, 3.0565e-5],
+    a: 19.18171,
+    e: [0.047318, 7.45e-9],
+    M: [142.5905, 0.011725806]
+  },
+  Neptune: {
+    N: [131.7806, 3.0173e-5],
+    i: [1.7700, -2.55e-7],
+    w: [272.8461, -6.027e-6],
+    a: 30.05826,
+    e: [0.008606, 2.15e-9],
+    M: [260.2471, 0.005995147]
+  },
+  Pluto: {
+    N: [110.30347, 0],
+    i: [17.14175, 0],
+    w: [113.76329, 0],
+    a: 39.48168677,
+    e: [0.24880766, 0],
+    M: [14.86205, 0.00396608]
+  }
+};
+
+function getHeliocentricXYZ(planetName, d) {
+  const el = PLANET_ELEMENTS[planetName];
+  const N = norm360(el.N[0] + el.N[1] * d);
+  const i = el.i[0] + el.i[1] * d;
+  const w = norm360(el.w[0] + el.w[1] * d);
+  const a = el.a;
+  const e = el.e[0] + el.e[1] * d;
+  const M = norm360(el.M[0] + el.M[1] * d);
+
+  const Mrad = M * DEG2RAD;
+  let E = Mrad + e * Math.sin(Mrad) * (1 + e * Math.cos(Mrad));
+  for (let iter = 0; iter < 6; iter++) {
+    const dE = (E - e * Math.sin(E) - Mrad) / (1 - e * Math.cos(E));
+    E -= dE;
+    if (Math.abs(dE) < 1e-7) break;
+  }
+
+  const xv = a * (Math.cos(E) - e);
+  const yv = a * (Math.sqrt(1 - e * e) * Math.sin(E));
+  const v = Math.atan2(yv, xv) * RAD2DEG;
+  const r = Math.sqrt(xv * xv + yv * yv);
+
+  const vw = (v + w) * DEG2RAD;
+  const Nrad = N * DEG2RAD;
+  const irad = i * DEG2RAD;
+
+  let xh = r * (Math.cos(Nrad) * Math.cos(vw) - Math.sin(Nrad) * Math.sin(vw) * Math.cos(irad));
+  let yh = r * (Math.sin(Nrad) * Math.cos(vw) + Math.cos(Nrad) * Math.sin(vw) * Math.cos(irad));
+  const zh = r * (Math.sin(vw) * Math.sin(irad));
+
+  // Perturbations for Jupiter, Saturn, Uranus
+  if (planetName === 'Jupiter' || planetName === 'Saturn' || planetName === 'Uranus') {
+    const Mj = norm360(19.8950 + 0.0830853001 * d);
+    const Ms = norm360(316.9670 + 0.0334442282 * d);
+    const Mu = norm360(142.5905 + 0.011725806 * d);
+    let dLon = 0;
+    if (planetName === 'Jupiter') {
+      dLon = -0.332 * sinD(2 * Mj - 5 * Ms - 67.6) - 0.056 * sinD(2 * Mj - 2 * Ms + 21) + 0.042 * sinD(3 * Mj - 5 * Ms + 21);
+    } else if (planetName === 'Saturn') {
+      dLon = 0.812 * sinD(2 * Mj - 5 * Ms - 67.6) - 0.229 * cosD(2 * Mj - 4 * Ms - 2) + 0.119 * sinD(Mj - 2 * Ms - 3);
+    } else if (planetName === 'Uranus') {
+      dLon = 0.040 * sinD(Ms - 2 * Mu + 6) + 0.035 * sinD(Ms - 3 * Mu + 33) - 0.015 * sinD(Mj - Mu + 20);
+    }
+    if (dLon !== 0) {
+      const lonH = Math.atan2(yh, xh) * RAD2DEG + dLon;
+      const radXY = Math.sqrt(xh * xh + yh * yh);
+      xh = radXY * cosD(lonH);
+      yh = radXY * sinD(lonH);
+    }
+  }
+
+  return { xh, yh, zh };
+}
+
+export function getPlanetLongitudes(date, planetList) {
+  const jd = toJulianDay(date);
+  // Schlyter epoch d = days since 1999 Dec 31 00:00 UT (JD 2451543.5)
+  const d = jd - 2451543.5;
+  const sun = getSunPosition(jd);
+  const earthLon = norm360(sun.lon + 180);
+  const xe = sun.radiusAU * cosD(earthLon);
+  const ye = sun.radiusAU * sinD(earthLon);
+
+  const result = {};
+  for (const name of planetList) {
+    if (name === 'Sun') {
+      result.Sun = sun.lon;
+    } else if (name === 'Moon') {
+      result.Moon = getMoonPosition(jd).lon;
+    } else {
+      const p = getHeliocentricXYZ(name, d);
+      result[name] = norm360(Math.atan2(p.yh - ye, p.xh - xe) * RAD2DEG);
+    }
+  }
+  return result;
+}
+
+// =========================================================================
+// Personal Rhythm & Aspect Graph Builder (State B)
+// =========================================================================
+
+const NATAL_TARGETS = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars'];
+const FAST_PLANETS = ['Moon', 'Mercury', 'Venus', 'Mars'];
+const SLOW_PLANETS = ['Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'];
+const TRANSIT_PLANETS = [...FAST_PLANETS, ...SLOW_PLANETS];
+
+const ASPECTS = [
+  { key: 'edge_conjunction', angle: 0 },
+  { key: 'edge_sextile', angle: 60 },
+  { key: 'edge_square', angle: 90 },
+  { key: 'edge_trine', angle: 120 },
+  { key: 'edge_opposition', angle: 180 }
+];
+
+const PLANET_GROUP_WEIGHT = {
+  Moon: 2.2,
+  Mercury: 1.0,
+  Venus: 1.0,
+  Mars: 1.0,
+  Jupiter: 1.5,
+  Saturn: 1.5,
+  Uranus: 2.0,
+  Neptune: 2.0,
+  Pluto: 2.0
+};
+
+const PLANET_ORB = {
+  Moon: 2.2,
+  Mercury: 1.0,
+  Venus: 1.0,
+  Mars: 1.0,
+  Jupiter: 1.5,
+  Saturn: 1.5,
+  Uranus: 1.5,
+  Neptune: 1.5,
+  Pluto: 1.5
+};
+
+const PLANET_TO_ACTOR = {
+  Moon: 'actor_moon',
+  Mercury: 'actor_mercury',
+  Venus: 'actor_venus',
+  Mars: 'actor_mars',
+  Jupiter: 'actor_jupiter',
+  Saturn: 'actor_saturn',
+  Uranus: 'actor_outer',
+  Neptune: 'actor_outer',
+  Pluto: 'actor_outer'
+};
+
+function getAngleDiffForPair(lonA, lonB, targetAngle) {
+  let dist = Math.abs(lonA - lonB) % 360;
+  if (dist > 180) dist = 360 - dist;
+  return Math.abs(dist - targetAngle);
+}
+
+function getDailyPlanetSpeed(planetName, targetDateObj) {
+  const tPrev = new Date(targetDateObj.getTime() - 12 * 3600000);
+  const tNext = new Date(targetDateObj.getTime() + 12 * 3600000);
+  const lonPrev = getPlanetLongitudes(tPrev, [planetName])[planetName];
+  const lonNext = getPlanetLongitudes(tNext, [planetName])[planetName];
+  return Math.abs(signedAngleDiff(lonNext, lonPrev));
+}
+
+// Find the closest exact Moon aspect falling within the calendar day [00:00..23:59]
+function findDailyMoonAspects(natal, targetDateObj, refMoment) {
+  const dayStart = new Date(
+    targetDateObj.getFullYear(),
+    targetDateObj.getMonth(),
+    targetDateObj.getDate(),
+    0, 0, 0, 0
+  );
+  const dayEndMs = dayStart.getTime() + 24 * 3600000;
+  const refMs = refMoment ? refMoment.getTime() : dayStart.getTime() + 12 * 3600000;
+  const stepHours = 2;
+  const moonOrbsMax = PLANET_ORB.Moon;
+  const bestByPair = [];
+
+  // Sample Moon longitude every 2 hours across the calendar day
+  const samples = [];
+  for (let h = 0; h <= 24; h += stepHours) {
+    const t = new Date(dayStart.getTime() + h * 3600000);
+    samples.push({ tMs: t.getTime(), lon: getMoonPosition(toJulianDay(t)).lon });
+  }
+
+  for (const nPlanet of NATAL_TARGETS) {
+    const nLon = natal[nPlanet];
+    for (const asp of ASPECTS) {
+      let bestDiff = Infinity;
+      let bestIdx = 0;
+      for (let i = 0; i < samples.length; i++) {
+        const d = getAngleDiffForPair(samples[i].lon, nLon, asp.angle);
+        if (d < bestDiff) {
+          bestDiff = d;
+          bestIdx = i;
+        }
+      }
+
+      if (bestDiff <= moonOrbsMax) {
+        // Ternary refinement around bestIdx to pinpoint the exact aspect time within the day
+        let lo = Math.max(dayStart.getTime(), samples[Math.max(0, bestIdx - 1)].tMs);
+        let hi = Math.min(dayEndMs, samples[Math.min(samples.length - 1, bestIdx + 1)].tMs);
+        for (let iter = 0; iter < 12; iter++) {
+          const m1 = lo + (hi - lo) / 3;
+          const m2 = hi - (hi - lo) / 3;
+          const d1 = getAngleDiffForPair(getMoonPosition(toJulianDay(new Date(m1))).lon, nLon, asp.angle);
+          const d2 = getAngleDiffForPair(getMoonPosition(toJulianDay(new Date(m2))).lon, nLon, asp.angle);
+          if (d1 < d2) hi = m2;
+          else lo = m1;
+        }
+        const peakMs = (lo + hi) * 0.5;
+        const peakDiff = getAngleDiffForPair(getMoonPosition(toJulianDay(new Date(peakMs))).lon, nLon, asp.angle);
+
+        if (peakDiff <= 0.55) {
+          const refDiff = getAngleDiffForPair(getMoonPosition(toJulianDay(new Date(refMs))).lon, nLon, asp.angle);
+          const laterDiff = getAngleDiffForPair(
+            getMoonPosition(toJulianDay(new Date(refMs + 2 * 3600000))).lon,
+            nLon,
+            asp.angle
+          );
+          const deltaFromRefHours = (peakMs - refMs) / 3600000;
+          const isApplying = Math.abs(deltaFromRefHours) <= 1.5
+            ? laterDiff < refDiff
+            : deltaFromRefHours > 0;
+          const dynamicKey = Math.abs(deltaFromRefHours) <= 2.0
+            ? 'exact'
+            : isApplying
+            ? 'applying'
+            : 'separating';
+
+          const kTarget = nPlanet === 'Sun' || nPlanet === 'Moon' ? 1.2 : 1.0;
+          const proximityBonus = 1 - Math.min(1, peakDiff / 0.6);
+          const recencyBonus = 1 - Math.min(0.45, Math.abs(deltaFromRefHours) / 28);
+          const weight = PLANET_GROUP_WEIGHT.Moon * (0.55 + 0.45 * proximityBonus) * recencyBonus * kTarget;
+          const focusActorKey =
+            nPlanet === 'Mercury' || nPlanet === 'Venus' || nPlanet === 'Mars'
+              ? PLANET_TO_ACTOR[nPlanet]
+              : 'actor_moon';
+
+          bestByPair.push({
+            transit: 'Moon',
+            natal: nPlanet,
+            aspectKey: asp.key,
+            angle: asp.angle,
+            diff: Number(peakDiff.toFixed(2)),
+            weight: Number(weight.toFixed(4)),
+            actorKey: focusActorKey,
+            layer: 'fast',
+            isApplying,
+            dynamicKey,
+            peakHour: new Date(peakMs).getHours()
+          });
+        }
+      }
+    }
+  }
+
+  bestByPair.sort((a, b) => b.weight - a.weight);
+  return bestByPair;
+}
+
+export function getBirthProfileKey(birthMoonAge) {
+  if (birthMoonAge <= 3.7 || birthMoonAge >= 25.8) return 'profile_async';
+  if (birthMoonAge < 11.1) return 'profile_waxing';
+  if (birthMoonAge <= 18.5) return 'profile_sync';
+  return 'profile_waning';
+}
+
+export function getPersonalPhaseKey(personalPhase) {
+  if (personalPhase <= 3.7 || personalPhase >= 25.8) return 'phase_peak';
+  if (personalPhase <= 11.1) return 'phase_decline';
+  if (personalPhase <= 18.5) return 'phase_minimum';
+  return 'phase_rise';
+}
+
+export function getPhaseStage(personalPhase, phaseKey) {
+  let elapsed = 0;
+  let span = 7.4;
+
+  if (phaseKey === 'phase_peak') {
+    elapsed = personalPhase >= 25.8 ? personalPhase - 25.8 : personalPhase + (SYNODIC_MONTH - 25.8);
+    span = SYNODIC_MONTH - 25.8 + 3.7;
+  } else if (phaseKey === 'phase_decline') {
+    elapsed = personalPhase - 3.7;
+    span = 7.4;
+  } else if (phaseKey === 'phase_minimum') {
+    elapsed = personalPhase - 11.1;
+    span = 7.4;
+  } else {
+    elapsed = personalPhase - 18.5;
+    span = 7.3;
+  }
+
+  const ratio = Math.max(0, Math.min(1, elapsed / span));
+  const dayInPhase = Math.min(8, Math.max(1, Math.floor(elapsed) + 1));
+  const totalDays = 8;
+
+  if (ratio < 0.34) {
+    return {
+      key: 'start',
+      dayInPhase,
+      totalDays,
+      label: 'начало такта',
+      hint: 'Начало такта: плавно входите в ритм этапа и задавайте основной вектор без перегрузок.'
+    };
+  }
+  if (ratio < 0.67) {
+    return {
+      key: 'middle',
+      dayInPhase,
+      totalDays,
+      label: 'середина такта',
+      hint: 'Середина такта: устойчивое время для последовательной работы над ключевыми задачами.'
+    };
+  }
+  return {
+    key: 'end',
+    dayInPhase,
+    totalDays,
+    label: 'финал такта',
+    hint: 'Финал такта: фиксируйте промежуточные результаты и готовьте переход к следующему этапу.'
+  };
+}
+
+export function getAgeClassKey(birthDateObj, targetDateObj) {
+  let age = targetDateObj.getFullYear() - birthDateObj.getFullYear();
+  const mDiff = targetDateObj.getMonth() - birthDateObj.getMonth();
+  if (mDiff < 0 || (mDiff === 0 && targetDateObj.getDate() < birthDateObj.getDate())) {
+    age--;
+  }
+  if (age <= 25) return 'age_18_25';
+  if (age <= 40) return 'age_26_40';
+  if (age <= 55) return 'age_41_55';
+  return 'age_55_plus';
+}
+
+export function parseBirthDateString(birthDateStr, birthTimeStr = null) {
+  if (!birthDateStr || typeof birthDateStr !== 'string') return null;
+  const parts = birthDateStr.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return null;
+  let hours = 12;
+  let minutes = 0;
+  if (birthTimeStr && typeof birthTimeStr === 'string') {
+    const tParts = birthTimeStr.split(':').map(Number);
+    if (tParts.length >= 2 && !isNaN(tParts[0]) && !isNaN(tParts[1])) {
+      hours = Math.max(0, Math.min(23, tParts[0]));
+      minutes = Math.max(0, Math.min(59, tParts[1]));
+    }
+  }
+  return new Date(parts[0], parts[1] - 1, parts[2], hours, minutes, 0, 0);
+}
+
+function buildRawNonMoonEdges(natal, targetDateObj, refMoment) {
+  const checkDate = refMoment || targetDateObj;
+  const laterDate = new Date(checkDate.getTime() + 2 * 3600000);
+  const nonMoonPlanets = TRANSIT_PLANETS.filter(p => p !== 'Moon');
+  const transitNow = getPlanetLongitudes(checkDate, nonMoonPlanets);
+  const transitLater = getPlanetLongitudes(laterDate, nonMoonPlanets);
+
+  const fastEdges = [];
+  const backgroundEdges = [];
+
+  for (const tPlanet of nonMoonPlanets) {
+    const isFast = FAST_PLANETS.includes(tPlanet);
+    const kGroup = PLANET_GROUP_WEIGHT[tPlanet];
+    const orb = PLANET_ORB[tPlanet] || 1.5;
+    const speed = isFast ? getDailyPlanetSpeed(tPlanet, checkDate) : 1.0;
+    // Slow/stationary loop penalty for personal fast planets (< 0.75 deg/day)
+    const loopMultiplier = isFast && speed < 0.75 ? 0.45 : 1.0;
+
+    for (const nPlanet of NATAL_TARGETS) {
+      for (const asp of ASPECTS) {
+        const diff = getAngleDiffForPair(transitNow[tPlanet], natal[nPlanet], asp.angle);
+        if (diff <= orb) {
+          const diffLater = getAngleDiffForPair(transitLater[tPlanet], natal[nPlanet], asp.angle);
+          const isApplying = diffLater < diff;
+          const dynamicKey = diff <= 0.28 ? 'exact' : isApplying ? 'applying' : 'separating';
+          const kTarget = nPlanet === 'Sun' || nPlanet === 'Moon' ? 1.2 : 1.0;
+          const weight = kGroup * (1 - diff / orb) * kTarget * loopMultiplier;
+
+          const edge = {
+            transit: tPlanet,
+            natal: nPlanet,
+            aspectKey: asp.key,
+            angle: asp.angle,
+            diff: Number(diff.toFixed(2)),
+            weight: Number(weight.toFixed(4)),
+            actorKey: PLANET_TO_ACTOR[tPlanet],
+            layer: isFast ? 'fast' : 'background',
+            isApplying,
+            dynamicKey
+          };
+          if (isFast) fastEdges.push(edge);
+          else backgroundEdges.push(edge);
+        }
+      }
+    }
+  }
+
+  fastEdges.sort((a, b) => b.weight - a.weight);
+  backgroundEdges.sort((a, b) => b.weight - a.weight);
+  return { fastEdges, backgroundEdges };
+}
+
+const ROLE_BASE_WEIGHTS = {
+  role_agile: 0.25,
+  role_drive: 0.20,
+  role_diplomat: 0.25,
+  role_heavy: 0.22,
+  role_autonomous: 0.32
+};
+
+const PHASE_ROLE_BIAS = {
+  phase_peak: { role_drive: 0.25, role_agile: 0.20, role_heavy: 0.18, role_diplomat: 0.15 },
+  phase_decline: { role_diplomat: 0.22, role_heavy: 0.25, role_autonomous: 0.22 },
+  phase_minimum: { role_autonomous: 0.45, role_diplomat: 0.15, role_heavy: 0.10, role_drive: -0.30, role_agile: -0.20 },
+  phase_rise: { role_agile: 0.25, role_drive: 0.18, role_diplomat: 0.20, role_heavy: 0.12 }
+};
+
+const SIGN_ROLE_BIAS = {
+  'Овен': { role_drive: 0.65 },
+  'Телец': { role_diplomat: 0.55, role_heavy: 0.30 },
+  'Близнецы': { role_agile: 0.65 },
+  'Рак': { role_autonomous: 0.70 },
+  'Лев': { role_drive: 0.45, role_diplomat: 0.30 },
+  'Дева': { role_agile: 0.45, role_heavy: 0.45 },
+  'Весы': { role_diplomat: 0.70 },
+  'Скорпион': { role_drive: 0.60, role_heavy: 0.20 },
+  'Стрелец': { role_drive: 0.40, role_diplomat: 0.35 },
+  'Козерог': { role_heavy: 0.85 },
+  'Водолей': { role_agile: 0.60 },
+  'Рыбы': { role_autonomous: 0.70 }
+};
+
+const TARGET_ROLE_BIAS = {
+  Mercury: { role_agile: 0.85 },
+  Venus: { role_diplomat: 0.85 },
+  Mars: { role_drive: 0.85 },
+  Sun: { role_drive: 0.42, role_heavy: 0.38 },
+  Moon: { role_autonomous: 0.42, role_diplomat: 0.36 }
+};
+
+const PHASE_CORRIDOR_GATE = {
+  phase_peak: { role_agile: 1.10, role_drive: 1.15, role_heavy: 1.05, role_diplomat: 1.00, role_autonomous: 0.75 },
+  phase_decline: { role_agile: 0.90, role_drive: 0.80, role_heavy: 1.18, role_diplomat: 1.10, role_autonomous: 1.02 },
+  phase_minimum: { role_agile: 0.55, role_drive: 0.40, role_heavy: 0.82, role_diplomat: 1.05, role_autonomous: 1.25 },
+  phase_rise: { role_agile: 1.12, role_drive: 1.05, role_heavy: 1.02, role_diplomat: 1.05, role_autonomous: 0.90 }
+};
+
+function findSolunarBaselineEdge(natal, targetDateObj, refMoment) {
+  const checkDate = refMoment || targetDateObj;
+  const laterDate = new Date(checkDate.getTime() + 2 * 3600000);
+  const moonNow = getMoonPosition(toJulianDay(checkDate)).lon;
+  const moonLater = getMoonPosition(toJulianDay(laterDate)).lon;
+  const targetLon = natal.Sun;
+
+  let bestAsp = ASPECTS[0];
+  let bestDiff = Infinity;
+  for (const asp of ASPECTS) {
+    const diff = getAngleDiffForPair(moonNow, targetLon, asp.angle);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestAsp = asp;
+    }
+  }
+
+  const diffLater = getAngleDiffForPair(moonLater, targetLon, bestAsp.angle);
+  const isApplying = diffLater < bestDiff;
+  const dynamicKey = bestDiff <= 1.2 ? 'exact' : isApplying ? 'applying' : 'separating';
+  const weight = Math.max(0.32, 0.52 * (1 - Math.min(bestDiff, 30) / 36));
+
+  return {
+    transit: 'Moon',
+    natal: 'Sun',
+    aspectKey: bestAsp.key,
+    angle: bestAsp.angle,
+    diff: Number(bestDiff.toFixed(2)),
+    weight: Number(weight.toFixed(4)),
+    actorKey: 'actor_moon',
+    layer: 'baseline',
+    isBaseline: true,
+    isApplying,
+    dynamicKey,
+    peakHour: checkDate.getHours()
+  };
+}
+
+export function scoreDailyRoles({
+  phaseKey,
+  moonSign,
+  natalMoonSign = null,
+  fastEdges = [],
+  backgroundEdges = [],
+  recentRoles = []
+}) {
+  const scores = { ...ROLE_BASE_WEIGHTS };
+
+  const pBias = PHASE_ROLE_BIAS[phaseKey] || {};
+  for (const [k, v] of Object.entries(pBias)) {
+    scores[k] = (scores[k] || 0) + v;
+  }
+
+  const sBias = SIGN_ROLE_BIAS[moonSign] || {};
+  for (const [k, v] of Object.entries(sBias)) {
+    scores[k] = (scores[k] || 0) + v;
+  }
+
+  if (natalMoonSign && moonSign === natalMoonSign) {
+    scores.role_autonomous += 0.55;
+  }
+
+  const consideredFast = fastEdges.slice(0, 3);
+  consideredFast.forEach((edge, idx) => {
+    const scale = idx === 0 ? 1.0 : idx === 1 ? 0.55 : 0.30;
+    const wNorm = Math.min(2.2, edge.weight || 0.5) / 1.6;
+    const tBias = TARGET_ROLE_BIAS[edge.natal] || {};
+    for (const [role, val] of Object.entries(tBias)) {
+      scores[role] = (scores[role] || 0) + val * scale * wNorm;
+    }
+    if (edge.aspectKey === 'edge_square' || edge.aspectKey === 'edge_opposition') {
+      scores.role_heavy += 0.20 * scale;
+    } else if (edge.aspectKey === 'edge_trine' || edge.aspectKey === 'edge_sextile') {
+      scores.role_diplomat += 0.14 * scale;
+    }
+  });
+
+  if (backgroundEdges.length > 0) {
+    const topBg = backgroundEdges[0];
+    if (topBg.actorKey === 'actor_saturn') {
+      scores.role_heavy += 0.42;
+    } else if (topBg.actorKey === 'actor_jupiter') {
+      scores.role_diplomat += 0.25;
+      scores.role_heavy += 0.15;
+    } else if (topBg.actorKey === 'actor_outer') {
+      scores.role_autonomous += 0.20;
+    }
+  }
+
+  const gate = PHASE_CORRIDOR_GATE[phaseKey] || {};
+  for (const k of Object.keys(scores)) {
+    scores[k] = Math.max(0.05, scores[k]) * (gate[k] || 1.0);
+  }
+
+  // Smooth lookback rotation penalty so roles do not stick for 3-4 days in a row
+  recentRoles.forEach((r, idx) => {
+    if (r && scores[r] !== undefined) {
+      scores[r] -= 0.42 * Math.pow(0.7, idx);
+    }
+  });
+
+  const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  let winner = ranked[0][0];
+  const twoInRow = recentRoles.length >= 2 && recentRoles[0] === winner && recentRoles[1] === winner;
+  const swapThreshold = twoInRow ? 1.25 : 0.65;
+  if (
+    ranked.length > 1 &&
+    recentRoles.slice(0, 2).includes(winner) &&
+    ranked[0][1] - ranked[1][1] < swapThreshold
+  ) {
+    winner = ranked[1][0];
+  }
+
+  const roundedScores = {};
+  for (const [k, v] of Object.entries(scores)) {
+    roundedScores[k] = Number(v.toFixed(3));
+  }
+
+  return { roleKey: winner, scores: roundedScores };
+}
+
+export function buildLayeredAspectGraph(birthDateObj, targetDateObj, refMoment = targetDateObj) {
+  const natal = getPlanetLongitudes(birthDateObj, NATAL_TARGETS);
+  const natalMoonSign = getZodiacSign(natal.Moon);
+
+  const buildDayCandidates = (dayDate, dayRef) => {
+    const moonEdges = findDailyMoonAspects(natal, dayDate, dayRef);
+    const { fastEdges: planetaryFast, backgroundEdges } = buildRawNonMoonEdges(natal, dayDate, dayRef);
+    let combined = [...moonEdges, ...planetaryFast].sort((a, b) => b.weight - a.weight);
+    if (combined.length === 0) {
+      combined = [findSolunarBaselineEdge(natal, dayDate, dayRef)];
+    }
+    return { moonEdges, planetaryFast, combined, backgroundEdges };
+  };
+
+  // Compute previous 2 days sequentially to detect repeating planets/aspects & apply decay
+  const prev2Date = new Date(targetDateObj.getFullYear(), targetDateObj.getMonth(), targetDateObj.getDate() - 2, 12, 0, 0, 0);
+  const prev1Date = new Date(targetDateObj.getFullYear(), targetDateObj.getMonth(), targetDateObj.getDate() - 1, 12, 0, 0, 0);
+
+  const prev2Raw = buildDayCandidates(prev2Date, prev2Date);
+  const prev2Top = prev2Raw.combined[0] || null;
+  const prev1Raw = buildDayCandidates(prev1Date, prev1Date);
+
+  const prev1Edges = prev1Raw.combined.map(edge => {
+    let w = edge.weight;
+    if (prev2Top && edge.transit !== 'Moon') {
+      if (edge.transit === prev2Top.transit) w *= 0.65;
+    } else if (prev2Top && edge.transit === 'Moon' && edge.aspectKey === prev2Top.aspectKey && edge.natal === prev2Top.natal) {
+      w *= 0.65;
+    }
+    return { ...edge, weight: Number(w.toFixed(4)) };
+  }).sort((a, b) => b.weight - a.weight);
+  const yesterdayFocus = prev1Edges[0] || null;
+
+  const todayRaw = buildDayCandidates(targetDateObj, refMoment);
+  const decayedFast = todayRaw.combined
+    .map(edge => {
+      let w = edge.weight;
+      if (edge.transit !== 'Moon') {
+        const wasActiveYesterday = prev1Raw.planetaryFast.some(
+          pe => pe.transit === edge.transit && pe.natal === edge.natal && pe.aspectKey === edge.aspectKey
+        );
+        if (yesterdayFocus && edge.transit === yesterdayFocus.transit) {
+          w *= 0.65;
+        } else if (wasActiveYesterday) {
+          w *= 0.75;
+        }
+        if (edge.dynamicKey === 'separating' && yesterdayFocus && edge.transit === yesterdayFocus.transit) {
+          w *= 0.75;
+        }
+      } else if (yesterdayFocus && yesterdayFocus.transit === 'Moon') {
+        if (edge.aspectKey === yesterdayFocus.aspectKey && edge.natal === yesterdayFocus.natal) {
+          w *= 0.62;
+        } else if (edge.aspectKey === yesterdayFocus.aspectKey) {
+          w *= 0.78;
+        }
+      }
+      // If both prev1 and prev2 had the exact same aspectKey, apply gentle rotation pressure
+      if (prev2Top && yesterdayFocus && edge.aspectKey === yesterdayFocus.aspectKey && edge.aspectKey === prev2Top.aspectKey) {
+        w *= 0.70;
+      }
+      return { ...edge, weight: Number(w.toFixed(4)) };
+    })
+    .filter(edge => edge.transit === 'Moon' || edge.weight >= 0.42)
+    .sort((a, b) => b.weight - a.weight);
+
+  // Guarantee non-empty daily focus via solunar baseline if filtering emptied planetary candidates
+  const finalFast = decayedFast.length > 0 ? decayedFast : [findSolunarBaselineEdge(natal, targetDateObj, refMoment)];
+
+  return {
+    fastEdges: finalFast,
+    backgroundEdges: todayRaw.backgroundEdges,
+    prev2Raw,
+    prev1Edges,
+    prev1Raw,
+    natalMoonSign
+  };
+}
+
+export function buildAspectGraph(birthDateObj, targetDateObj) {
+  const { fastEdges, backgroundEdges } = buildLayeredAspectGraph(birthDateObj, targetDateObj, targetDateObj);
+  return [...fastEdges, ...backgroundEdges].sort((a, b) => b.weight - a.weight);
+}
+
+export function determineOperationalRole(phaseKey, topFastEdge, extraCtx = null) {
+  if (extraCtx && extraCtx.moonSign) {
+    return scoreDailyRoles({
+      phaseKey,
+      moonSign: extraCtx.moonSign,
+      natalMoonSign: extraCtx.natalMoonSign || null,
+      fastEdges: extraCtx.fastEdges || (topFastEdge ? [topFastEdge] : []),
+      backgroundEdges: extraCtx.backgroundEdges || [],
+      recentRoles: extraCtx.recentRoles || []
+    }).roleKey;
+  }
+  if (phaseKey === 'phase_minimum' && (!topFastEdge || topFastEdge.weight < 1.15)) {
+    return 'role_autonomous';
+  }
+  if (topFastEdge) {
+    switch (topFastEdge.actorKey) {
+      case 'actor_mercury': return 'role_agile';
+      case 'actor_mars': return 'role_drive';
+      case 'actor_venus': return 'role_diplomat';
+      case 'actor_moon':
+        if (phaseKey === 'phase_peak') return 'role_drive';
+        if (phaseKey === 'phase_rise') return 'role_agile';
+        if (phaseKey === 'phase_decline') return 'role_diplomat';
+        return 'role_autonomous';
+    }
+  }
+  switch (phaseKey) {
+    case 'phase_peak': return 'role_drive';
+    case 'phase_rise': return 'role_agile';
+    case 'phase_decline': return 'role_diplomat';
+    default: return 'role_autonomous';
+  }
+}
+
+export function getTimeSlot(date = new Date()) {
+  const h = date.getHours();
+  if (h < 12) return 'morning';
+  if (h < 18) return 'day';
+  return 'evening';
+}
+
+export function computePersonalState(
+  birthDateStr,
+  targetDate = new Date(),
+  momentForPhase = targetDate,
+  birthTimeStr = null
+) {
+  const birthObj = parseBirthDateString(birthDateStr, birthTimeStr);
+  if (!birthObj) return null;
+
+  const birthMoonAge = getMoonPhaseInfo(birthObj).moonAge;
+  const currentPhaseInfo = getMoonPhaseInfo(momentForPhase);
+  const currentMoonAge = currentPhaseInfo.moonAge;
+  const personalPhase = ((currentMoonAge - birthMoonAge) % SYNODIC_MONTH + SYNODIC_MONTH) % SYNODIC_MONTH;
+
+  const profileKey = getBirthProfileKey(birthMoonAge);
+  const phaseKey = getPersonalPhaseKey(personalPhase);
+  const phaseStage = getPhaseStage(personalPhase, phaseKey);
+  const ageClassKey = getAgeClassKey(birthObj, targetDate);
+  const headerColor = PHASE_COLORS[phaseKey];
+
+  const middayTarget = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 12, 0, 0, 0);
+  const graph = buildLayeredAspectGraph(birthObj, middayTarget, momentForPhase);
+  const { fastEdges, backgroundEdges, prev2Raw, prev1Edges, prev1Raw, natalMoonSign } = graph;
+  const dailyFocusEdge = fastEdges[0] || null;
+  const backgroundEdge = backgroundEdges[0] || null;
+  const isBackgroundExactPeak = Boolean(backgroundEdge && backgroundEdge.diff <= 0.25);
+
+  // Sequential role resolution for prev2 -> prev1 -> today to prevent multi-day role stagnation
+  const getPhaseAtDayOffset = (offsetDays) => {
+    const dt = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + offsetDays, 12, 0, 0, 0);
+    const info = getMoonPhaseInfo(dt);
+    const pp = ((info.moonAge - birthMoonAge) % SYNODIC_MONTH + SYNODIC_MONTH) % SYNODIC_MONTH;
+    return { phaseKey: getPersonalPhaseKey(pp), moonSign: info.zodiacSign };
+  };
+
+  const p2Info = getPhaseAtDayOffset(-2);
+  const rolePrev2 = scoreDailyRoles({
+    phaseKey: p2Info.phaseKey,
+    moonSign: p2Info.moonSign,
+    natalMoonSign,
+    fastEdges: prev2Raw.combined,
+    backgroundEdges: prev2Raw.backgroundEdges,
+    recentRoles: []
+  }).roleKey;
+
+  const p1Info = getPhaseAtDayOffset(-1);
+  const rolePrev1 = scoreDailyRoles({
+    phaseKey: p1Info.phaseKey,
+    moonSign: p1Info.moonSign,
+    natalMoonSign,
+    fastEdges: prev1Edges,
+    backgroundEdges: prev1Raw.backgroundEdges,
+    recentRoles: [rolePrev2]
+  }).roleKey;
+
+  const { roleKey, scores: roleScores } = scoreDailyRoles({
+    phaseKey,
+    moonSign: currentPhaseInfo.zodiacSign,
+    natalMoonSign,
+    fastEdges,
+    backgroundEdges,
+    recentRoles: [rolePrev1, rolePrev2]
+  });
+
+  const timeSlot = getTimeSlot(momentForPhase);
+
+  return {
+    birthMoonAge,
+    currentMoonAge,
+    personalPhase,
+    profileKey,
+    phaseKey,
+    phaseStage,
+    ageClassKey,
+    roleKey,
+    roleScores,
+    headerColor,
+    fastEdges,
+    backgroundEdges,
+    dailyFocusEdge,
+    backgroundEdge,
+    isBackgroundExactPeak,
+    topEdges: fastEdges.slice(0, 2),
+    transitMoonZodiac: currentPhaseInfo.zodiacSign,
+    timeSlot
+  };
+}
+
+export function computeRawDiagnosticData(
+  birthDateStr = null,
+  birthTimeStr = null,
+  targetDate = new Date(),
+  refMoment = targetDate
+) {
+  const summary = getCalendarDayLunarSummary(targetDate, refMoment);
+  const transitLongitudesRaw = getPlanetLongitudes(refMoment, TRANSIT_PLANETS);
+  const transitPlanets = {};
+  for (const name of TRANSIT_PLANETS) {
+    const lon = norm360(transitLongitudesRaw[name]);
+    transitPlanets[name] = {
+      longitude: Number(lon.toFixed(4)),
+      sign: getZodiacSign(lon)
+    };
+  }
+
+  const birthObj = birthDateStr ? parseBirthDateString(birthDateStr, birthTimeStr) : null;
+  let natalPlanets = null;
+  let allFoundAspects = [];
+  let personalSummary = null;
+
+  if (birthObj) {
+    const natalRaw = getPlanetLongitudes(birthObj, NATAL_TARGETS);
+    natalPlanets = {};
+    for (const name of NATAL_TARGETS) {
+      const lon = norm360(natalRaw[name]);
+      natalPlanets[name] = {
+        longitude: Number(lon.toFixed(4)),
+        sign: getZodiacSign(lon)
+      };
+    }
+
+    const laterMoment = new Date(refMoment.getTime() + 2 * 3600000);
+    const transitLaterRaw = getPlanetLongitudes(laterMoment, TRANSIT_PLANETS);
+    for (const tPlanet of TRANSIT_PLANETS) {
+      const isFast = FAST_PLANETS.includes(tPlanet);
+      const orb = PLANET_ORB[tPlanet] || 1.5;
+      const kGroup = PLANET_GROUP_WEIGHT[tPlanet] || 1.0;
+      const speed = isFast && tPlanet !== 'Moon' ? getDailyPlanetSpeed(tPlanet, refMoment) : 1.0;
+      const loopMultiplier = isFast && tPlanet !== 'Moon' && speed < 0.75 ? 0.45 : 1.0;
+
+      for (const nPlanet of NATAL_TARGETS) {
+        for (const asp of ASPECTS) {
+          const diff = getAngleDiffForPair(transitLongitudesRaw[tPlanet], natalRaw[nPlanet], asp.angle);
+          if (diff <= orb) {
+            const diffLater = getAngleDiffForPair(transitLaterRaw[tPlanet], natalRaw[nPlanet], asp.angle);
+            const isApplying = diffLater < diff;
+            const dynamicKey = diff <= 0.28 ? 'exact' : isApplying ? 'applying' : 'separating';
+            const kTarget = nPlanet === 'Sun' || nPlanet === 'Moon' ? 1.2 : 1.0;
+            const weight = kGroup * (1 - diff / orb) * kTarget * loopMultiplier;
+            allFoundAspects.push({
+              transit: tPlanet,
+              natal: nPlanet,
+              aspectKey: asp.key,
+              angle: asp.angle,
+              orbLimit: orb,
+              diff: Number(diff.toFixed(4)),
+              weight: Number(weight.toFixed(4)),
+              actorKey: PLANET_TO_ACTOR[tPlanet],
+              layer: isFast ? 'fast' : 'background',
+              dynamicKey,
+              isApplying
+            });
+          }
+        }
+      }
+    }
+    allFoundAspects.sort((a, b) => b.weight - a.weight);
+
+    const personal = computePersonalState(birthDateStr, targetDate, refMoment, birthTimeStr);
+    if (personal) {
+      personalSummary = {
+        birthMoonAge: Number(personal.birthMoonAge.toFixed(4)),
+        personalPhase: Number(personal.personalPhase.toFixed(4)),
+        profileKey: personal.profileKey,
+        phaseKey: personal.phaseKey,
+        phaseStage: personal.phaseStage,
+        ageClassKey: personal.ageClassKey,
+        roleKey: personal.roleKey,
+        roleScores: personal.roleScores,
+        timeSlot: personal.timeSlot,
+        dailyFocusEdge: personal.dailyFocusEdge,
+        backgroundEdge: personal.backgroundEdge,
+        prioritizedFastEdges: personal.fastEdges,
+        prioritizedBackgroundEdges: personal.backgroundEdges
+      };
+    }
+  }
+
+  return {
+    selectedDate: `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`,
+    referenceTime: formatHM(refMoment),
+    input: {
+      birthDate: birthDateStr || null,
+      birthTime: birthDateStr ? (birthTimeStr || '12:00 (default)') : null
+    },
+    lunar: {
+      moonAge: Number(summary.phaseInfo.moonAge.toFixed(4)),
+      illuminationPct: summary.phaseInfo.illuminationExact,
+      detailedTrend: summary.phaseInfo.detailedTrend,
+      moonLongitude: Number(summary.phaseInfo.moonLon.toFixed(4)),
+      sunLongitude: Number(summary.phaseInfo.sunLon.toFixed(4)),
+      moonZodiacSign: summary.phaseInfo.zodiacSign,
+      windows: summary.windows,
+      activeLunarDay: summary.activeLunarDay,
+      firstDay: summary.firstDay,
+      firstDayStartTime: summary.firstDayStartTimeStr,
+      secondDay: summary.secondDay,
+      secondDayStartTime: summary.secondDayStartTimeStr
+    },
+    natalPlanets,
+    transitPlanets,
+    allAspectsWithinOrb: allFoundAspects,
+    personal: personalSummary
+  };
+}

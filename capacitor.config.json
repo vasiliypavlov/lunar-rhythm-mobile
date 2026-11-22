@@ -1,0 +1,17 @@
+{
+  "appId": "com.vasiliypavlov.lunarrhythm",
+  "appName": "Ритм Дня",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#0f1115"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_lunar",
+      "iconColor": "#EAB32E"
+    }
+  }
+}
