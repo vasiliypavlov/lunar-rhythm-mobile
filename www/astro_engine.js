@@ -474,6 +474,8 @@ export function getCalendarDayLunarSummary(calendarDate, referenceMoment = null)
     evening: mkWindow(20)
   };
 
+  const signIngress = findMoonSignIngressBetween(dayStart, dayEnd);
+
   return {
     calendarDay: calendarDate.getDate(),
     activeLunarDay: activeInterval.day,
@@ -485,8 +487,31 @@ export function getCalendarDayLunarSummary(calendarDate, referenceMoment = null)
     transitionTimeStr,
     moonriseStr,
     moonsetStr,
+    signIngress,
     windows,
     phaseInfo
+  };
+}
+
+export function findMoonSignIngressBetween(startDate, endDate) {
+  const startSign = getZodiacSign(getMoonPosition(toJulianDay(startDate)).lon);
+  const endSign = getZodiacSign(getMoonPosition(toJulianDay(endDate)).lon);
+  if (startSign === endSign) return null;
+
+  let lo = startDate.getTime();
+  let hi = endDate.getTime();
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) * 0.5;
+    const midSign = getZodiacSign(getMoonPosition(toJulianDay(new Date(mid))).lon);
+    if (midSign === startSign) lo = mid;
+    else hi = mid;
+  }
+  const ingressDate = new Date((lo + hi) * 0.5);
+  return {
+    fromSign: startSign,
+    toSign: endSign,
+    timeStr: formatHM(ingressDate),
+    timestamp: ingressDate.getTime()
   };
 }
 
@@ -1444,6 +1469,7 @@ export function computeRawDiagnosticData(
       moonLongitude: Number(summary.phaseInfo.moonLon.toFixed(4)),
       sunLongitude: Number(summary.phaseInfo.sunLon.toFixed(4)),
       moonZodiacSign: summary.phaseInfo.zodiacSign,
+      signIngress: summary.signIngress,
       windows: summary.windows,
       activeLunarDay: summary.activeLunarDay,
       firstDay: summary.firstDay,
