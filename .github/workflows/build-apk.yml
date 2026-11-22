@@ -40,9 +40,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
 
-      # Capacitor 6 использует Android Gradle Plugin 8.2 — требуется JDK 17.
       - name: Установка JDK 17
         uses: actions/setup-java@v4
         with:
@@ -58,7 +56,7 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Установка зависимостей
-        run: npm install
+        run: npm install --no-audit --no-fund
 
       - name: Инициализация Android-платформы
         run: |
@@ -117,3 +115,4 @@ jobs:
           echo '`lunar-rhythm-mobile-release-unsigned-apk` → `app-release-unsigned.apk`' >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Скачайте файлы во вкладке **Actions** → **Artifacts** → нужный артефакт." >> "$GITHUB_STEP_SUMMARY"
+
