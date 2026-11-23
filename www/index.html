@@ -133,7 +133,18 @@
 
           <div id="mode-panel-date" class="mode-panel hidden">
             <label class="field-label" for="input-calendar-date" data-i18n="label_calendar_date">Календарная дата</label>
-            <input type="date" id="input-calendar-date" class="text-input tabular-nums" />
+            <div class="birth-date-wrap">
+              <input type="text" id="input-calendar-date" class="text-input birth-date-input tabular-nums" inputmode="numeric" maxlength="10" placeholder="дд.мм.гггг" autocomplete="off" aria-label="Календарная дата" />
+              <button type="button" id="btn-calendar-date-picker" class="birth-date-picker-btn" aria-label="Выбрать дату в календаре" title="Выбрать дату в календаре">
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+              </button>
+              <input type="date" id="input-calendar-date-picker" class="birth-date-native-picker" tabindex="-1" aria-hidden="true" />
+            </div>
             <div id="date-calc-preview" class="calc-preview-box"></div>
           </div>
 

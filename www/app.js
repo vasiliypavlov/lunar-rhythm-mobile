@@ -1990,6 +1990,16 @@ function updateStaticUILabels(dict) {
   document.getElementById('tab-reminders').setAttribute('aria-label', labels.nav_reminders);
   document.getElementById('tab-settings').setAttribute('aria-label', labels.nav_settings);
   document.getElementById('select-builtin-lang').setAttribute('aria-label', labels.label_builtin_lang);
+  const calInputEl = document.getElementById('input-calendar-date');
+  if (calInputEl) {
+    calInputEl.setAttribute('aria-label', labels.label_calendar_date);
+    calInputEl.placeholder = labels.placeholder_birth_date || 'dd.mm.yyyy';
+  }
+  const calPickerBtn = document.getElementById('btn-calendar-date-picker');
+  if (calPickerBtn) {
+    calPickerBtn.title = labels.btn_pick_date || labels.label_calendar_date;
+    calPickerBtn.setAttribute('aria-label', labels.btn_pick_date || labels.label_calendar_date);
+  }
   const birthInputEl = document.getElementById('input-birth-date');
   birthInputEl.setAttribute('aria-label', labels.label_birth_date);
   birthInputEl.placeholder = labels.placeholder_birth_date || 'dd.mm.yyyy';
@@ -3245,7 +3255,8 @@ function updateCalendarDateCalcPreview() {
   const labels = getUILabels(dict);
   const val = document.getElementById('input-calendar-date').value;
   const box = document.getElementById('date-calc-preview');
-  const parsed = parseBirthDateString(val);
+  const isoDate = parseDisplayOrIsoDate(val);
+  const parsed = isoDate ? parseBirthDateString(isoDate) : null;
   if (!parsed) {
     box.textContent = labels.label_select_date_preview;
     return;
@@ -3747,9 +3758,65 @@ function bindEvents() {
   }
   lunarSelect.addEventListener('change', updateLunarDayNextPreview);
 
+  const todayIso = toISODate(new Date());
   const calInput = document.getElementById('input-calendar-date');
-  calInput.value = toISODate(new Date());
-  calInput.addEventListener('change', updateCalendarDateCalcPreview);
+  const calPicker = document.getElementById('input-calendar-date-picker');
+  calInput.value = formatIsoToDisplayDate(todayIso);
+  if (calPicker) calPicker.value = todayIso;
+
+  calInput.addEventListener('input', (e) => {
+    const rawVal = e.target.value;
+    const directIso = /^\d{4}-\d{2}-\d{2}$/.test(rawVal.trim()) ? parseDisplayOrIsoDate(rawVal) : null;
+    if (directIso) {
+      e.target.value = formatIsoToDisplayDate(directIso);
+      if (calPicker) calPicker.value = directIso;
+      updateCalendarDateCalcPreview();
+      return;
+    }
+
+    const digits = rawVal.replace(/\D/g, '').slice(0, 8);
+    const formatted = maskBirthDateDigits(digits);
+    if (e.target.value !== formatted) {
+      e.target.value = formatted;
+    }
+
+    if (digits.length === 0) {
+      if (calPicker) calPicker.value = '';
+      updateCalendarDateCalcPreview();
+      return;
+    }
+
+    if (digits.length === 8) {
+      const parsedIso = parseDisplayOrIsoDate(formatted);
+      if (calPicker) calPicker.value = parsedIso || '';
+    }
+    updateCalendarDateCalcPreview();
+  });
+
+  const handleCalDateCommit = (e) => {
+    const trimmed = e.target.value.trim();
+    if (!trimmed) {
+      if (calPicker) calPicker.value = '';
+      updateCalendarDateCalcPreview();
+      return;
+    }
+    const parsedIso = parseDisplayOrIsoDate(trimmed);
+    if (parsedIso) {
+      e.target.value = formatIsoToDisplayDate(parsedIso);
+      if (calPicker) calPicker.value = parsedIso;
+    }
+    updateCalendarDateCalcPreview();
+  };
+  calInput.addEventListener('blur', handleCalDateCommit);
+  calInput.addEventListener('change', handleCalDateCommit);
+
+  if (calPicker) {
+    calPicker.addEventListener('change', (e) => {
+      const iso = e.target.value || toISODate(new Date());
+      calInput.value = formatIsoToDisplayDate(iso);
+      updateCalendarDateCalcPreview();
+    });
+  }
 
   formEl.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -3772,7 +3839,14 @@ function bindEvents() {
         nextTriggerAt: nextDate.getTime()
       };
     } else {
-      const dateStr = calInput.value || toISODate(new Date());
+      const rawDate = calInput.value.trim();
+      const parsedIso = rawDate ? parseDisplayOrIsoDate(rawDate) : toISODate(new Date());
+      if (!parsedIso) {
+        updateCalendarDateCalcPreview();
+        calInput.focus();
+        return;
+      }
+      const dateStr = parsedIso;
       const parsed = parseBirthDateString(dateStr) || new Date();
       const targetAt = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 9, 0, 0, 0);
       const summary = getCalendarDayLunarSummary(parsed, targetAt);
