@@ -174,6 +174,17 @@
         </div>
 
         <div class="surface-card settings-card">
+          <h2 class="card-title" data-i18n="settings_location_title">Координаты наблюдателя</h2>
+          <p class="card-desc" data-i18n="settings_location_desc">По умолчанию координаты определяются по часовому поясу без GPS. Укажите широту и долготу вручную для точного расчёта восхода и захода Луны.</p>
+          <div class="coord-row">
+            <input type="text" id="input-observer-lat" class="text-input coord-input tabular-nums" placeholder="Широта (напр. 56.13)" autocomplete="off" aria-label="Широта" />
+            <input type="text" id="input-observer-lon" class="text-input coord-input tabular-nums" placeholder="Долгота (напр. 47.25)" autocomplete="off" aria-label="Долгота" />
+            <button type="button" id="btn-clear-coords" class="btn-ghost-compact" data-i18n="btn_clear">Очистить</button>
+          </div>
+          <p id="location-status-box" class="muted-meta location-status"></p>
+        </div>
+
+        <div class="surface-card settings-card">
           <h2 class="card-title" data-i18n="settings_notif_title">Уведомления и чекпоинты</h2>
           <p class="card-desc" data-i18n="settings_notif_daily_desc">Ежедневные сводки</p>
           <div class="checkpoint-grid">

@@ -613,6 +613,15 @@ export const DICT_FR = {
     "msg_dict_error": "Erreur de fichier",
     "reminder_prefix_tts": "Rappel pour le jour lunaire en cours.",
     "harmony_bridge_minimum": "Le contexte extérieur apporte du dynamisme, mais votre rythme personnel vise la récupération — utilisez cet élan uniquement pour clore les tâches en cours sans nouveau départ.",
-    "harmony_bridge_decline": "Le contexte extérieur apporte du dynamisme, mais votre rythme personnel est en déclin calme — orientez cet élan vers l'achèvement et la mise en ordre."
+    "harmony_bridge_decline": "Le contexte extérieur apporte du dynamisme, mais votre rythme personnel est en déclin calme — orientez cet élan vers l'achèvement et la mise en ordre.",
+    "settings_location_title": "Coordonnées de l'observateur",
+    "settings_location_desc": "Par défaut, les coordonnées sont déduites de votre fuseau horaire sans GPS. Saisissez la latitude et la longitude manuellement pour le lever/coucher exact de la Lune.",
+    "label_observer_lat": "Latitude",
+    "placeholder_observer_lat": "Lat. (ex. 48.86)",
+    "label_observer_lon": "Longitude",
+    "placeholder_observer_lon": "Lon. (ex. 2.35)",
+    "location_status_auto": "Actuel : Auto",
+    "location_status_manual": "Actuel : Manuel",
+    "location_status_incomplete": "Saisissez les deux valeurs : latitude (−90…90) et longitude (−180…180)."
   }
 };

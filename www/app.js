@@ -14,6 +14,7 @@ import {
   getLunarDayAt,
   getLunationIntervals,
   getMoonPhaseInfo,
+  getObserverCoords,
   getPlanetLongitudes,
   getTimeSlot,
   getZodiacSign,
@@ -22,6 +23,8 @@ import {
   computeRawDiagnosticData,
   findNextDateForLunarDay,
   parseBirthDateString,
+  parseObserverCoord,
+  setObserverCoords,
   signedAngleDiff,
   toJulianDay
 } from './astro_engine.js';
@@ -35,6 +38,8 @@ const ACTIVE_ALARM_BADGE_COLOR = '#E65100';
 const DEFAULT_PERSISTED_STATE = {
   birthDate: null,
   birthTime: null,
+  observerLat: null,
+  observerLon: null,
   builtinLang: null,
   dictionaryMode: 'default',
   customDictionary: null,
@@ -96,9 +101,21 @@ function mergePersistedDefaults(data) {
     ? data.builtinLang
     : detectDefaultLang();
 
+  const rawLat = parseObserverCoord(data && data.observerLat);
+  const rawLon = parseObserverCoord(data && data.observerLon);
+  const hasValidCoords =
+    rawLat !== null &&
+    rawLon !== null &&
+    rawLat >= -90 &&
+    rawLat <= 90 &&
+    rawLon >= -180 &&
+    rawLon <= 180;
+
   return {
     ...DEFAULT_PERSISTED_STATE,
     ...(data || {}),
+    observerLat: hasValidCoords ? Number(rawLat.toFixed(4)) : null,
+    observerLon: hasValidCoords ? Number(rawLon.toFixed(4)) : null,
     builtinLang,
     notifications: {
       ...DEFAULT_PERSISTED_STATE.notifications,
@@ -1216,15 +1233,6 @@ function buildBriefingSpeechText() {
   return sentences.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
 
-/**
- * Формирует блок «сырых» астрономических данных для внешней ИИ-модели.
- *
- * Сюда попадают только ИЗМЕРЕНИЯ: угловые положения небесных тел, освещённость
- * диска, возраст Луны, границы лунных суток, времена восхода/захода, аспекты
- * с орбисами и направлением развития. Готовых выводов приложения здесь нет
- * намеренно — иначе промпт превращается в текстовую копию карточки «Сегодня»
- * и внешняя модель лишь переписывает уже готовое предсказание.
- */
 /* =========================================================================
    Промпт для внешней ИИ-модели — «максимум математики, минимум рамок».
 
@@ -1248,18 +1256,24 @@ const PROMPT_DAY_WINDOWS = [
   { key: 'night', hour: 23 }
 ];
 
-// Планеты, между которыми считается «слой неба» (транзит → транзит).
+// Планеты для суточной скорости (транзит → транзит включает и Солнце).
 const PROMPT_SKY_PLANETS = [
   'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'
 ];
+const PROMPT_SKY_ASPECT_BODIES = ['Sun', ...PROMPT_SKY_PLANETS];
 
 // Резервные заголовки на случай, если в словаре нет ui_labels.ai_forecast_title.
 const FALLBACK_FORECAST_TITLES = {
   'ru-RU': 'Астрологический прогноз на день',
+  'ru': 'Астрологический прогноз на день',
   'en-US': 'Daily Astrological Forecast',
+  'en': 'Daily Astrological Forecast',
   'es-ES': 'Pronóstico astrológico del día',
+  'es': 'Pronóstico astrológico del día',
   'de-DE': 'Astrologische Tagesprognose',
-  'fr-FR': 'Prévision astrologique du jour'
+  'de': 'Astrologische Tagesprognose',
+  'fr-FR': 'Prévision astrologique du jour',
+  'fr': 'Prévision astrologique du jour'
 };
 
 // Дескриптор авторской строки словаря: только «что это за категория».
@@ -1276,6 +1290,14 @@ function getClauseDescriptor(text) {
   return String(text || '').split(/\s+[—–]\s+/)[0].trim();
 }
 
+function getPromptDayRelation(targetDate, now = new Date()) {
+  const targetStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (targetStart < todayStart) return 'past';
+  if (targetStart > todayStart) return 'future';
+  return 'today';
+}
+
 // Границы лунных суток вокруг опорного момента — с датами, а не только часами.
 function getLunarDayBoundaries(targetDate, refMoment) {
   const dayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0, 0);
@@ -1285,25 +1307,29 @@ function getLunarDayBoundaries(targetDate, refMoment) {
   const lun1 = getLunationIntervals(jd0);
   const lun2 = jd1 >= lun1.nmNext ? getLunationIntervals(jd1) : null;
   const all = lun2 ? [...lun1.intervals, ...lun2.intervals] : lun1.intervals;
-  let transition = null;
-  for (const iv of all) {
-    if (iv.startJD > jd0 && iv.startJD <= jd1) transition = iv;
-  }
   const refJD = toJulianDay(refMoment);
   const active = all.find((iv) => refJD >= iv.startJD && refJD < iv.endJD) || all[0];
   const idx = all.indexOf(active);
+  const prev = idx > 0 && active.startJD > jd0 ? all[idx - 1] : null;
   const next = idx >= 0 && idx + 1 < all.length ? all[idx + 1] : null;
   return {
     activeDay: active.day,
     activeStart: fromJulianDay(active.startJD),
     activeEnd: fromJulianDay(active.endJD),
+    activeStartsSameDay: active.startJD >= jd0 && active.startJD <= jd1,
+    activeEndsSameDay: active.endJD >= jd0 && active.endJD <= jd1,
+    prevDay: prev ? prev.day : null,
+    prevStart: prev ? fromJulianDay(prev.startJD) : null,
+    prevEnd: prev ? fromJulianDay(prev.endJD) : null,
     nextDay: next ? next.day : null,
-    nextStart: next ? fromJulianDay(next.startJD) : null
+    nextStart: next ? fromJulianDay(next.startJD) : null,
+    nextStartsSameDay: Boolean(next && next.startJD >= jd0 && next.startJD <= jd1)
   };
 }
 
 // Окна календарного дня: положение Луны, «уже прошло» и номер лунных суток.
-function getPromptDayWindows(targetDate, refMoment) {
+function getPromptDayWindows(targetDate, refMoment, now = new Date()) {
+  const dayRelation = getPromptDayRelation(targetDate, now);
   return PROMPT_DAY_WINDOWS.map((slot) => {
     const at = new Date(
       targetDate.getFullYear(),
@@ -1315,8 +1341,12 @@ function getPromptDayWindows(targetDate, refMoment) {
       0
     );
     const info = getMoonPhaseInfo(at);
-    const sameDay = at.toDateString() === refMoment.toDateString();
-    const passed = sameDay && slot.hour < refMoment.getHours();
+    const passed =
+      dayRelation === 'past'
+        ? true
+        : dayRelation === 'future'
+          ? false
+          : slot.hour < refMoment.getHours();
     const lunar = getLunarDayAt(at);
     return {
       key: slot.key,
@@ -1351,14 +1381,14 @@ function getPairOrbLimit(nameA, nameB) {
   return Math.min(limitFor(nameA), limitFor(nameB));
 }
 
-// «Слой неба»: аспекты между транзитными планетами.
+// «Слой неба»: аспекты между транзитными планетами (включая Солнце).
 function computeSkyAspects(refMoment) {
-  const lons = getPlanetLongitudes(refMoment, PROMPT_SKY_PLANETS);
+  const lons = getPlanetLongitudes(refMoment, PROMPT_SKY_ASPECT_BODIES);
   const found = [];
-  for (let i = 0; i < PROMPT_SKY_PLANETS.length; i++) {
-    for (let j = i + 1; j < PROMPT_SKY_PLANETS.length; j++) {
-      const from = PROMPT_SKY_PLANETS[i];
-      const to = PROMPT_SKY_PLANETS[j];
+  for (let i = 0; i < PROMPT_SKY_ASPECT_BODIES.length; i++) {
+    for (let j = i + 1; j < PROMPT_SKY_ASPECT_BODIES.length; j++) {
+      const from = PROMPT_SKY_ASPECT_BODIES[i];
+      const to = PROMPT_SKY_ASPECT_BODIES[j];
       const limit = getPairOrbLimit(from, to);
       for (const asp of ASPECTS) {
         const orb = Math.abs(getAngularSeparation(lons[from], lons[to]) - asp.angle);
@@ -1417,7 +1447,7 @@ function buildAstronomyDataBlock(raw, summary, dict, ctx) {
   const bounds = ctx.boundaries;
 
   lines.push(
-    `- Date: ${ctx.isoDate} | reference moment (local): ${ctx.currentTimeStr} | time slot: ${ctx.activeTimeSlot}`
+    `- Date: ${ctx.isoDate} (${ctx.dayRelation}) | reference moment (local): ${ctx.currentTimeStr} | time slot: ${ctx.activeTimeSlot}`
   );
   lines.push('');
   lines.push('LUNAR GEOMETRY');
@@ -1445,6 +1475,12 @@ function buildAstronomyDataBlock(raw, summary, dict, ctx) {
   lines.push(
     `- First moonrise / first moonset inside the calendar day: ${summary.moonriseStr} / ${summary.moonsetStr}`
   );
+  if (raw.observer) {
+    const tzTag = raw.observer.timeZone ? `, ${raw.observer.timeZone}` : '';
+    lines.push(
+      `- Observer coordinates for horizon calculations: ${Number(raw.observer.latitude).toFixed(2)}°, ${Number(raw.observer.longitude).toFixed(2)}° (${raw.observer.source}${tzTag})`
+    );
+  }
   lines.push('');
 
   lines.push('THE DAY IN FOUR WINDOWS (the Moon moves through the day; each window belongs to a lunar day)');
@@ -1462,18 +1498,29 @@ function buildAstronomyDataBlock(raw, summary, dict, ctx) {
   const activeNote = getCategoryDescriptor(dict.lunar_days?.[String(bounds.activeDay)] || '');
   const activeEdge = raw.personal?.dailyFocusEdge;
   lines.push(
-    `- ${bounds.activeDay}th (active at the reference moment): "${activeNote}" | window ${ddmm(bounds.activeStart)} ${formatHM(bounds.activeStart)} -> ${ddmm(bounds.activeEnd)} ${formatHM(bounds.activeEnd)}`
+    `- ${toEnglishOrdinal(bounds.activeDay)} (active at the reference moment): "${activeNote}" | window ${ddmm(bounds.activeStart)} ${formatHM(bounds.activeStart)} -> ${ddmm(bounds.activeEnd)} ${formatHM(bounds.activeEnd)}`
   );
   let dynamics =
     `    dynamics: the Moon is ${phaseInfo.isWaxing ? 'waxing' : 'waning'} at ${Number(phaseInfo.illuminationExact).toFixed(1)} % illumination (${lunar.detailedTrend}), Moon age ${Number(phaseInfo.moonAge).toFixed(2)} d`;
   if (activeEdge) {
-    dynamics += `, and the day leans on ${activeEdge.transit} -> natal ${activeEdge.natal}: ${activeEdge.aspectKey} (${activeEdge.dynamicKey}, the aspect becomes exact around ${String(activeEdge.peakHour ?? 0).padStart(2, '0')}:00)`;
+    const peakPart =
+      typeof activeEdge.peakHour === 'number'
+        ? `, the aspect becomes exact around ${String(activeEdge.peakHour).padStart(2, '0')}:00`
+        : '';
+    dynamics += `, and the day leans on ${activeEdge.transit} -> natal ${activeEdge.natal}: ${activeEdge.aspectKey} (${activeEdge.dynamicKey}${peakPart})`;
   }
   lines.push(dynamics);
+  if (bounds.prevDay !== null) {
+    const prevNote = getCategoryDescriptor(dict.lunar_days?.[String(bounds.prevDay)] || '');
+    lines.push(
+      `- ${toEnglishOrdinal(bounds.prevDay)} (earlier portion of the same calendar day, ended ${ddmm(bounds.prevEnd)} at ${formatHM(bounds.prevEnd)}): "${prevNote}"`
+    );
+  }
   if (bounds.nextStart) {
     const nextNote = getCategoryDescriptor(dict.lunar_days?.[String(bounds.nextDay)] || '');
+    const sameDayTag = bounds.nextStartsSameDay ? 'later inside the same calendar day' : 'on the next calendar day';
     lines.push(
-      `- ${bounds.nextDay}th (begins ${ddmm(bounds.nextStart)} at ${formatHM(bounds.nextStart)}, still inside the same calendar day): "${nextNote}"`
+      `- ${toEnglishOrdinal(bounds.nextDay)} (begins ${ddmm(bounds.nextStart)} at ${formatHM(bounds.nextStart)}, ${sameDayTag}): "${nextNote}"`
     );
   }
   lines.push('');
@@ -1518,7 +1565,7 @@ function buildAstronomyDataBlock(raw, summary, dict, ctx) {
   }
   lines.push('');
 
-  lines.push("SKY ASPECTS (transit body -> transit body; the mutual geometry of today's planets)");
+  lines.push("SKY ASPECTS (transit body -> transit body; the mutual geometry of today's sky)");
   const skyAspects = computeSkyAspects(ctx.refMoment);
   if (skyAspects.length) {
     for (const a of skyAspects) {
@@ -1545,7 +1592,7 @@ function buildAstronomyDataBlock(raw, summary, dict, ctx) {
   lines.push('');
 
   lines.push(
-    'LUNAR ASPECTS AND THEIR PEAK TIMES (the exact moment each Moon aspect completes inside the calendar day)'
+    'LUNAR ASPECTS AND THEIR PEAK TIMES (Moon aspects reaching exact peak inside this calendar day)'
   );
   const moonEdges = (raw.personal?.prioritizedFastEdges || []).filter((e) => e.transit === 'Moon');
   if (moonEdges.length) {
@@ -1553,11 +1600,11 @@ function buildAstronomyDataBlock(raw, summary, dict, ctx) {
       const peak =
         typeof e.peakHour === 'number' ? `, peak around ${String(e.peakHour).padStart(2, '0')}:00` : '';
       lines.push(
-        `- ${e.transit} -> natal ${e.natal}: ${e.aspectKey} (exact angle ${e.angle}°, orb ${Number(e.diff).toFixed(2)}°, ${e.dynamicKey}${peak})`
+        `- ${e.transit} -> natal ${e.natal}: ${e.aspectKey} (exact angle ${e.angle}°, orb at peak ${Number(e.diff).toFixed(2)}°, ${e.dynamicKey}${peak})`
       );
     }
   } else {
-    lines.push('- none');
+    lines.push('- none completing an exact peak inside this calendar day');
   }
   lines.push('');
 
@@ -1565,9 +1612,10 @@ function buildAstronomyDataBlock(raw, summary, dict, ctx) {
     lines.push('YESTERDAY AND THE DAY BEFORE (the engine compares today with the previous two days)');
     const formatEdges = (edges) =>
       (edges || [])
+        .slice(0, 3)
         .map(
           (e) =>
-            `${e.transit} -> natal ${e.natal}: ${e.aspectKey} (${e.dynamicKey}, weight ${Number(e.weight).toFixed(3)}${
+            `${e.transit} -> natal ${e.natal}: ${e.aspectKey} (${e.dynamicKey}${
               typeof e.peakHour === 'number' ? `, peak ${String(e.peakHour).padStart(2, '0')}:00` : ''
             })`
         )
@@ -1586,10 +1634,10 @@ function buildAstronomyDataBlock(raw, summary, dict, ctx) {
       `- Yesterday (${ddmm(yesterday)}): ${formatEdges(ctx.history.prev1Edges) || 'none'}`
     );
     lines.push(
-      `- The day before (${ddmm(dayBefore)}): ${formatEdges((ctx.history.prev2Raw?.combined || []).slice(0, 3)) || 'none'}`
+      `- The day before (${ddmm(dayBefore)}): ${formatEdges(ctx.history.prev2Raw?.combined) || 'none'}`
     );
     lines.push(
-      '- The engine lowers the weight of a focus that repeats the previous day, so a change of focus between yesterday and today is itself a signal.'
+      '- The engine lowers the priority of a focus that repeats the previous day, so a change of focus between yesterday and today is itself a signal.'
     );
   }
 
@@ -1600,7 +1648,7 @@ function buildAstronomyDataBlock(raw, summary, dict, ctx) {
  * Метрики персонального 29,5-дневного цикла: числа и ключи классификации,
  * без авторских формулировок словаря на сегодняшний день.
  */
-function buildPersonalRhythmBlock(raw, dict, ctx) {
+function buildPersonalRhythmBlock(raw) {
   const lines = [];
   const personal = raw.personal;
 
@@ -1711,6 +1759,7 @@ function buildInterpretiveGlossary(dict) {
 function buildExternalAIPrompt() {
   const dict = getActiveDictionary();
   const lang = dict.meta?.lang || 'ru-RU';
+  const baseLang = lang.toLowerCase().split(/[-_]/)[0];
   const targetLangName = resolveLanguageNameEn(lang);
   const now = new Date();
   const isToday = isSameCalendarDay(selectedDate, now);
@@ -1729,11 +1778,13 @@ function buildExternalAIPrompt() {
   const boundaries = getLunarDayBoundaries(selectedDate, refMoment);
   const ddmm = (d) =>
     `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const dayRelation = getPromptDayRelation(selectedDate, now);
 
   const ctx = {
     dict,
     lang,
     targetLangName,
+    dayRelation,
     isoDate: toISODate(selectedDate),
     humanDate: formatHumanDate(selectedDate, lang),
     currentTimeStr: formatHM(refMoment),
@@ -1741,7 +1792,7 @@ function buildExternalAIPrompt() {
     targetDate: selectedDate,
     refMoment,
     boundaries,
-    windows: getPromptDayWindows(selectedDate, refMoment),
+    windows: getPromptDayWindows(selectedDate, refMoment, now),
     history: getPromptHistoryLayer(
       appState.birthDate,
       appState.birthTime,
@@ -1751,17 +1802,38 @@ function buildExternalAIPrompt() {
     title:
       dict.ui_labels?.ai_forecast_title ||
       FALLBACK_FORECAST_TITLES[lang] ||
+      FALLBACK_FORECAST_TITLES[baseLang] ||
       FALLBACK_FORECAST_TITLES['en-US']
   };
 
   const hasBirthData = Boolean(raw.personal);
-  const activeDayPhrase =
-    `the ${ctx.boundaries.activeDay}th lunar day runs from ${ddmm(ctx.boundaries.activeStart)} at ${formatHM(
+  const activeOrdinal = toEnglishOrdinal(ctx.boundaries.activeDay);
+  let activeDayPhrase =
+    `the ${activeOrdinal} lunar day runs from ${ddmm(ctx.boundaries.activeStart)} at ${formatHM(
       ctx.boundaries.activeStart
-    )} to ${ddmm(ctx.boundaries.activeEnd)} at ${formatHM(ctx.boundaries.activeEnd)}, so the visible slice of ${ctx.humanDate} is the tail of that lunar day` +
-    (ctx.boundaries.nextStart
-      ? ` and the beginning of the ${ctx.boundaries.nextDay}th, which continues into the next calendar day`
-      : '');
+    )} to ${ddmm(ctx.boundaries.activeEnd)} at ${formatHM(ctx.boundaries.activeEnd)}`;
+  if (ctx.boundaries.prevDay !== null) {
+    activeDayPhrase +=
+      `, having replaced the ${toEnglishOrdinal(ctx.boundaries.prevDay)} lunar day earlier on ${ctx.humanDate} at ${formatHM(
+        ctx.boundaries.activeStart
+      )}` +
+      (ctx.boundaries.nextStartsSameDay
+        ? ` before the ${toEnglishOrdinal(ctx.boundaries.nextDay)} begins at ${formatHM(ctx.boundaries.nextStart)}`
+        : ' and continuing into the next calendar day');
+  } else if (ctx.boundaries.nextStartsSameDay) {
+    activeDayPhrase += `, so the visible slice of ${ctx.humanDate} is the tail of that lunar day followed by the beginning of the ${toEnglishOrdinal(
+      ctx.boundaries.nextDay
+    )} at ${formatHM(ctx.boundaries.nextStart)}, which continues into the next calendar day`;
+  } else {
+    activeDayPhrase += `, spanning all of ${ctx.humanDate}`;
+  }
+
+  const timeHorizonLine =
+    dayRelation === 'today'
+      ? `The reference moment is ${ctx.currentTimeStr} (current local time). The day is divided below into morning / day / evening / night, and the windows that have already passed are marked as such.`
+      : dayRelation === 'future'
+        ? `${ctx.humanDate} is a future calendar date (reference snapshot at ${ctx.currentTimeStr}). All four intraday windows (morning / day / evening / night) are still ahead.`
+        : `${ctx.humanDate} is a past calendar date (reference snapshot at ${ctx.currentTimeStr}). All four intraday windows (morning / day / evening / night) have already passed.`;
 
   const lines = [
     `You are an astrologer-analyst. Write the daily horoscope for ${ctx.humanDate}`,
@@ -1777,7 +1849,7 @@ function buildExternalAIPrompt() {
     'A lunar day runs from one moonrise to the next and usually spans two calendar days; the calendar day is only the mask',
     `through which the user sees it. Here ${activeDayPhrase}.`,
     'Describe the lunar day as a whole, and give the actionable guidance for the part of it that is still ahead.',
-    `The reference moment is ${ctx.currentTimeStr}. The day is divided below into morning / day / evening / night, and the windows that have already passed are marked as such.`,
+    timeHorizonLine,
     ...(hasBirthData
       ? []
       : [
@@ -1786,14 +1858,14 @@ function buildExternalAIPrompt() {
     '',
     '### RULES',
     '1. GROUND TRUTH. The positions, angles, orbs, timings and classifications below come from the app own ephemeris engine. Never recompute, correct or second-guess them.',
-    "2. THE FRAME IS THE ENGINE DECISION, NOT A SUGGESTION. The phase, the stage, the profile, the age class, the operational role and the primary aspect listed under THE ENGINE READING OF TODAY are the app own verdict for this day. Interpret them, never overturn them and never tell the user that the app chose otherwise.",
+    "2. THE FRAME IS THE ENGINE DECISION, NOT A SUGGESTION. The phase, the stage, the profile, the age class, the operational role and the primary aspect listed under THE ENGINE'S READING OF TODAY are the app own verdict for this day. Interpret them, never overturn them and never tell the user that the app chose otherwise.",
     '3. NO FATALISM, NO HEALTH CLAIMS. Never claim that the sky determines fate, and never make medical, psychological or hormonal claims.',
     '',
     '### ASTRONOMICAL DATA (ground truth)',
     ...buildAstronomyDataBlock(raw, summary, dict, ctx),
     '',
     '### PERSONAL CYCLE (same engine + the birth data of the user)',
-    ...buildPersonalRhythmBlock(raw, dict, ctx),
+    ...buildPersonalRhythmBlock(raw),
     '',
     "### THE ENGINE'S READING OF TODAY (the frame — interpret, do not overturn)"
   ];
@@ -1829,7 +1901,7 @@ function buildExternalAIPrompt() {
           ? `, peak around ${String(focus.peakHour).padStart(2, '0')}:00`
           : '';
       lines.push(
-        `- Primary aspect of the day: ${focus.transit} -> natal ${focus.natal}: ${focus.aspectKey} (exact angle ${focus.angle}°, orb ${Number(focus.diff).toFixed(2)}°, ${focus.dynamicKey}${peak}, engine weight ${Number(focus.weight).toFixed(3)})`
+        `- Primary aspect of the day: ${focus.transit} -> natal ${focus.natal}: ${focus.aspectKey} (exact angle ${focus.angle}°, orb ${Number(focus.diff).toFixed(2)}°, ${focus.dynamicKey}${peak})`
       );
     }
     if (personal.backgroundEdge) {
@@ -1929,6 +2001,16 @@ function updateStaticUILabels(dict) {
   const birthTimeEl = document.getElementById('input-birth-time');
   birthTimeEl.setAttribute('aria-label', labels.label_birth_time);
   birthTimeEl.title = labels.title_birth_time;
+  const latInputEl = document.getElementById('input-observer-lat');
+  if (latInputEl) {
+    latInputEl.setAttribute('aria-label', labels.label_observer_lat || 'Latitude');
+    latInputEl.placeholder = labels.placeholder_observer_lat || 'Lat (e.g. 56.13)';
+  }
+  const lonInputEl = document.getElementById('input-observer-lon');
+  if (lonInputEl) {
+    lonInputEl.setAttribute('aria-label', labels.label_observer_lon || 'Longitude');
+    lonInputEl.placeholder = labels.placeholder_observer_lon || 'Lon (e.g. 47.25)';
+  }
   const copyRawBtn = document.getElementById('btn-copy-raw-data');
   if (!copyRawBtn.classList.contains('is-copied')) {
     copyRawBtn.textContent = labels.btn_copy_raw_data;
@@ -2997,6 +3079,51 @@ function maskBirthDateDigits(raw) {
   return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4, 8)}`;
 }
 
+function updateObserverCoordsStatus(dict = getActiveDictionary(), isIncomplete = false) {
+  const box = document.getElementById('location-status-box');
+  if (!box) return;
+  const labels = getUILabels(dict);
+  if (isIncomplete) {
+    box.classList.add('is-warning');
+    box.textContent = labels.location_status_incomplete || 'Enter both latitude (-90..90) and longitude (-180..180).';
+    return;
+  }
+  box.classList.remove('is-warning');
+  const obs = getObserverCoords();
+  const coordsStr = `(${obs.latDeg.toFixed(2)}°, ${obs.lonDeg.toFixed(2)}°)`;
+  if (obs.source === 'manual') {
+    box.textContent = `${labels.location_status_manual || 'Active: Manual'} ${coordsStr}`;
+  } else {
+    const tzLabel = obs.timeZone ? ` · ${obs.timeZone}` : '';
+    box.textContent = `${labels.location_status_auto || 'Active: Auto'}${tzLabel} ${coordsStr}`;
+  }
+}
+
+function updateObserverCoordsUI(dict = getActiveDictionary()) {
+  const latInput = document.getElementById('input-observer-lat');
+  const lonInput = document.getElementById('input-observer-lon');
+  const activeEl = typeof document.activeElement !== 'undefined' ? document.activeElement : null;
+  if (latInput && activeEl !== latInput) {
+    latInput.value = appState.observerLat !== null ? String(appState.observerLat) : '';
+  }
+  if (lonInput && activeEl !== lonInput) {
+    lonInput.value = appState.observerLon !== null ? String(appState.observerLon) : '';
+  }
+  const latRaw = latInput ? latInput.value.trim() : '';
+  const lonRaw = lonInput ? lonInput.value.trim() : '';
+  const hasAnyTyped = Boolean(latRaw || lonRaw);
+  const latNum = parseObserverCoord(latRaw);
+  const lonNum = parseObserverCoord(lonRaw);
+  const typedValidPair =
+    latNum !== null &&
+    lonNum !== null &&
+    latNum >= -90 &&
+    latNum <= 90 &&
+    lonNum >= -180 &&
+    lonNum <= 180;
+  updateObserverCoordsStatus(dict, hasAnyTyped && !typedValidPair);
+}
+
 function renderSettingsPanel(dict) {
   const labels = getUILabels(dict);
   const birthInput = document.getElementById('input-birth-date');
@@ -3024,6 +3151,8 @@ function renderSettingsPanel(dict) {
     profileBox.classList.add('hidden');
     profileBox.innerHTML = '';
   }
+
+  updateObserverCoordsUI(dict);
 
   document.getElementById('input-morning-enabled').checked = Boolean(
     appState.notifications.morningEnabled
@@ -3761,6 +3890,88 @@ function bindEvents() {
     void rescheduleNotifications();
   });
 
+  // Settings Tab: Manual Observer Latitude & Longitude override (auto IANA when empty)
+  const latInputEl = document.getElementById('input-observer-lat');
+  const lonInputEl = document.getElementById('input-observer-lon');
+  const handleObserverCoordsEdit = async (commitCleanup = false) => {
+    const latRaw = latInputEl.value.trim();
+    const lonRaw = lonInputEl.value.trim();
+
+    if (!latRaw && !lonRaw) {
+      if (appState.observerLat !== null || appState.observerLon !== null) {
+        appState.observerLat = null;
+        appState.observerLon = null;
+        setObserverCoords(null, null);
+        await stateStore.saveState({ observerLat: null, observerLon: null });
+        renderUI();
+        void rescheduleNotifications();
+      } else {
+        updateObserverCoordsStatus(getActiveDictionary(), false);
+      }
+      return;
+    }
+
+    const latNum = parseObserverCoord(latRaw);
+    const lonNum = parseObserverCoord(lonRaw);
+    const isValidPair =
+      latNum !== null &&
+      lonNum !== null &&
+      latNum >= -90 &&
+      latNum <= 90 &&
+      lonNum >= -180 &&
+      lonNum <= 180;
+
+    if (isValidPair) {
+      const nextLat = Number(latNum.toFixed(4));
+      const nextLon = Number(lonNum.toFixed(4));
+      if (commitCleanup) {
+        latInputEl.value = String(nextLat);
+        lonInputEl.value = String(nextLon);
+      }
+      if (appState.observerLat !== nextLat || appState.observerLon !== nextLon) {
+        appState.observerLat = nextLat;
+        appState.observerLon = nextLon;
+        setObserverCoords(nextLat, nextLon);
+        await stateStore.saveState({ observerLat: nextLat, observerLon: nextLon });
+        renderUI();
+        void rescheduleNotifications();
+      } else {
+        updateObserverCoordsStatus(getActiveDictionary(), false);
+      }
+      return;
+    }
+
+    if (commitCleanup && appState.observerLat !== null && appState.observerLon !== null) {
+      latInputEl.value = String(appState.observerLat);
+      lonInputEl.value = String(appState.observerLon);
+      updateObserverCoordsStatus(getActiveDictionary(), false);
+      return;
+    }
+
+    updateObserverCoordsStatus(getActiveDictionary(), true);
+  };
+
+  if (latInputEl && lonInputEl) {
+    latInputEl.addEventListener('input', () => { handleObserverCoordsEdit(false); });
+    lonInputEl.addEventListener('input', () => { handleObserverCoordsEdit(false); });
+    latInputEl.addEventListener('blur', () => { handleObserverCoordsEdit(true); });
+    lonInputEl.addEventListener('blur', () => { handleObserverCoordsEdit(true); });
+  }
+
+  const clearCoordsBtn = document.getElementById('btn-clear-coords');
+  if (clearCoordsBtn) {
+    clearCoordsBtn.addEventListener('click', async () => {
+      if (latInputEl) latInputEl.value = '';
+      if (lonInputEl) lonInputEl.value = '';
+      appState.observerLat = null;
+      appState.observerLon = null;
+      setObserverCoords(null, null);
+      await stateStore.saveState({ observerLat: null, observerLon: null });
+      renderUI();
+      void rescheduleNotifications();
+    });
+  }
+
   // Notifications (3 independent checkpoint toggles + alarm push notifications)
   const saveNotifs = async () => {
     appState.notifications = {
@@ -4043,6 +4254,7 @@ async function handleAppResume() {
 
 async function init() {
   appState = await stateStore.loadState();
+  setObserverCoords(appState.observerLat, appState.observerLon);
 
   if (!appState.builtinLang || !BUILTIN_DICTIONARIES[appState.builtinLang]) {
     await stateStore.saveState({ builtinLang: detectDefaultLang() });

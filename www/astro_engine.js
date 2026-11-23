@@ -299,6 +299,251 @@ function refineNewMoon(jdCenter) {
 
 const lunationCache = new Map();
 
+const IANA_ZONE_ALIASES = {
+  'Europe/Kiev': 'Europe/Kyiv',
+  'Europe/Uzhgorod': 'Europe/Kyiv',
+  'Europe/Zaporozhye': 'Europe/Kyiv',
+  'Europe/Simferopol': 'Europe/Moscow',
+  'Europe/Kirov': 'Europe/Moscow',
+  'Europe/Volgograd': 'Europe/Moscow',
+  'Europe/Astrakhan': 'Europe/Samara',
+  'Europe/Saratov': 'Europe/Samara',
+  'Europe/Ulyanovsk': 'Europe/Samara',
+  'Europe/Tiraspol': 'Europe/Chisinau',
+  'Asia/Calcutta': 'Asia/Kolkata',
+  'Asia/Saigon': 'Asia/Ho_Chi_Minh',
+  'Asia/Katmandu': 'Asia/Kathmandu',
+  'Asia/Rangoon': 'Asia/Yangon',
+  'Asia/Chongqing': 'Asia/Shanghai',
+  'Asia/Chungking': 'Asia/Shanghai',
+  'Asia/Harbin': 'Asia/Shanghai',
+  'Asia/Urumqi': 'Asia/Shanghai',
+  'Asia/Ashkhabad': 'Asia/Ashgabat',
+  'Asia/Qyzylorda': 'Asia/Almaty',
+  'Asia/Astana': 'Asia/Almaty',
+  'Asia/Novokuznetsk': 'Asia/Krasnoyarsk',
+  'Asia/Barnaul': 'Asia/Novosibirsk',
+  'Asia/Tomsk': 'Asia/Novosibirsk',
+  'Asia/Chita': 'Asia/Yakutsk',
+  'Asia/Khandyga': 'Asia/Yakutsk',
+  'Asia/Ust-Nera': 'Asia/Vladivostok',
+  'Asia/Srednekolymsk': 'Asia/Magadan',
+  'Asia/Anadyr': 'Asia/Kamchatka',
+  'America/Buenos_Aires': 'America/Argentina/Buenos_Aires',
+  'America/Montreal': 'America/Toronto',
+  'America/Indianapolis': 'America/Indiana/Indianapolis',
+  'America/Indiana/Indianapolis': 'America/New_York',
+  'America/Detroit': 'America/New_York',
+  'Pacific/Auckland': 'Pacific/Auckland'
+};
+
+const IANA_ZONE_COORDS = {
+  // Russia & CIS
+  'Europe/Kaliningrad': { lat: 54.7104, lon: 20.4522 },
+  'Europe/Moscow': { lat: 55.7558, lon: 37.6173 },
+  'Europe/Samara': { lat: 53.1959, lon: 50.1002 },
+  'Asia/Yekaterinburg': { lat: 56.8389, lon: 60.6057 },
+  'Asia/Omsk': { lat: 54.9885, lon: 73.3242 },
+  'Asia/Novosibirsk': { lat: 55.0084, lon: 82.9357 },
+  'Asia/Krasnoyarsk': { lat: 56.0153, lon: 92.8932 },
+  'Asia/Irkutsk': { lat: 52.2869, lon: 104.3050 },
+  'Asia/Yakutsk': { lat: 62.0397, lon: 129.7422 },
+  'Asia/Vladivostok': { lat: 43.1155, lon: 131.8855 },
+  'Asia/Magadan': { lat: 59.5612, lon: 150.8301 },
+  'Asia/Sakhalin': { lat: 46.9591, lon: 142.7380 },
+  'Asia/Kamchatka': { lat: 53.0245, lon: 158.6435 },
+  'Europe/Minsk': { lat: 53.9006, lon: 27.5590 },
+  'Europe/Kyiv': { lat: 50.4501, lon: 30.5234 },
+  'Europe/Chisinau': { lat: 47.0105, lon: 28.8638 },
+  'Asia/Almaty': { lat: 43.2220, lon: 76.8512 },
+  'Asia/Tashkent': { lat: 41.2995, lon: 69.2401 },
+  'Asia/Tbilisi': { lat: 41.7151, lon: 44.8271 },
+  'Asia/Baku': { lat: 40.4093, lon: 49.8671 },
+  'Asia/Yerevan': { lat: 40.1872, lon: 44.5152 },
+  'Asia/Bishkek': { lat: 42.8746, lon: 74.5698 },
+  'Asia/Dushanbe': { lat: 38.5598, lon: 68.7870 },
+  'Asia/Ashgabat': { lat: 37.9601, lon: 58.3261 },
+
+  // Europe
+  'Europe/London': { lat: 51.5074, lon: -0.1278 },
+  'Europe/Dublin': { lat: 53.3498, lon: -6.2603 },
+  'Europe/Lisbon': { lat: 38.7223, lon: -9.1393 },
+  'Europe/Madrid': { lat: 40.4168, lon: -3.7038 },
+  'Europe/Paris': { lat: 48.8566, lon: 2.3522 },
+  'Europe/Brussels': { lat: 50.8503, lon: 4.3517 },
+  'Europe/Amsterdam': { lat: 52.3676, lon: 4.9041 },
+  'Europe/Berlin': { lat: 52.5200, lon: 13.4050 },
+  'Europe/Zurich': { lat: 47.3769, lon: 8.5417 },
+  'Europe/Vienna': { lat: 48.2082, lon: 16.3738 },
+  'Europe/Rome': { lat: 41.9028, lon: 12.4964 },
+  'Europe/Prague': { lat: 50.0755, lon: 14.4378 },
+  'Europe/Warsaw': { lat: 52.2297, lon: 21.0122 },
+  'Europe/Budapest': { lat: 47.4979, lon: 19.0402 },
+  'Europe/Stockholm': { lat: 59.3293, lon: 18.0686 },
+  'Europe/Oslo': { lat: 59.9139, lon: 10.7522 },
+  'Europe/Copenhagen': { lat: 55.6761, lon: 12.5683 },
+  'Europe/Helsinki': { lat: 60.1699, lon: 24.9384 },
+  'Europe/Riga': { lat: 56.9496, lon: 24.1052 },
+  'Europe/Vilnius': { lat: 54.6872, lon: 25.2797 },
+  'Europe/Tallinn': { lat: 59.4370, lon: 24.7536 },
+  'Europe/Bucharest': { lat: 44.4268, lon: 26.1025 },
+  'Europe/Sofia': { lat: 42.6977, lon: 23.3219 },
+  'Europe/Athens': { lat: 37.9838, lon: 23.7275 },
+  'Europe/Belgrade': { lat: 44.7866, lon: 20.4489 },
+  'Europe/Istanbul': { lat: 41.0082, lon: 28.9784 },
+  'Atlantic/Reykjavik': { lat: 64.1466, lon: -21.9426 },
+
+  // Middle East & Asia
+  'Asia/Jerusalem': { lat: 31.7683, lon: 35.2137 },
+  'Asia/Riyadh': { lat: 24.7136, lon: 46.6753 },
+  'Asia/Dubai': { lat: 25.2048, lon: 55.2708 },
+  'Asia/Tehran': { lat: 35.6892, lon: 51.3890 },
+  'Asia/Karachi': { lat: 24.8607, lon: 67.0011 },
+  'Asia/Kolkata': { lat: 28.6139, lon: 77.2090 },
+  'Asia/Kathmandu': { lat: 27.7172, lon: 85.3240 },
+  'Asia/Dhaka': { lat: 23.8103, lon: 90.4125 },
+  'Asia/Yangon': { lat: 16.8409, lon: 96.1735 },
+  'Asia/Bangkok': { lat: 13.7563, lon: 100.5018 },
+  'Asia/Ho_Chi_Minh': { lat: 10.8231, lon: 106.6297 },
+  'Asia/Jakarta': { lat: -6.2088, lon: 106.8456 },
+  'Asia/Singapore': { lat: 1.3521, lon: 103.8198 },
+  'Asia/Kuala_Lumpur': { lat: 3.1390, lon: 101.6869 },
+  'Asia/Manila': { lat: 14.5995, lon: 120.9842 },
+  'Asia/Shanghai': { lat: 31.2304, lon: 121.4737 },
+  'Asia/Hong_Kong': { lat: 22.3193, lon: 114.1694 },
+  'Asia/Taipei': { lat: 25.0330, lon: 121.5654 },
+  'Asia/Seoul': { lat: 37.5665, lon: 126.9780 },
+  'Asia/Tokyo': { lat: 35.6762, lon: 139.6503 },
+
+  // Americas
+  'America/New_York': { lat: 40.7128, lon: -74.0060 },
+  'America/Toronto': { lat: 43.6532, lon: -79.3832 },
+  'America/Chicago': { lat: 41.8781, lon: -87.6298 },
+  'America/Mexico_City': { lat: 19.4326, lon: -99.1332 },
+  'America/Denver': { lat: 39.7392, lon: -104.9903 },
+  'America/Phoenix': { lat: 33.4484, lon: -112.0740 },
+  'America/Los_Angeles': { lat: 34.0522, lon: -118.2437 },
+  'America/Vancouver': { lat: 49.2827, lon: -123.1207 },
+  'America/Anchorage': { lat: 61.2181, lon: -149.9003 },
+  'Pacific/Honolulu': { lat: 21.3069, lon: -157.8583 },
+  'America/Bogota': { lat: 4.7110, lon: -74.0721 },
+  'America/Lima': { lat: -12.0464, lon: -77.0428 },
+  'America/Santiago': { lat: -33.4489, lon: -70.6693 },
+  'America/Sao_Paulo': { lat: -23.5505, lon: -46.6333 },
+  'America/Argentina/Buenos_Aires': { lat: -34.6037, lon: -58.3816 },
+
+  // Africa & Oceania
+  'Africa/Casablanca': { lat: 33.5731, lon: -7.5898 },
+  'Africa/Lagos': { lat: 6.5244, lon: 3.3792 },
+  'Africa/Cairo': { lat: 30.0444, lon: 31.2357 },
+  'Africa/Nairobi': { lat: -1.2921, lon: 36.8219 },
+  'Africa/Johannesburg': { lat: -26.2041, lon: 28.0473 },
+  'Australia/Perth': { lat: -31.9505, lon: 115.8605 },
+  'Australia/Adelaide': { lat: -34.9285, lon: 138.6007 },
+  'Australia/Melbourne': { lat: -37.8136, lon: 144.9631 },
+  'Australia/Sydney': { lat: -33.8688, lon: 151.2093 },
+  'Pacific/Auckland': { lat: -36.8485, lon: 174.7633 }
+};
+
+let manualObserverCoords = null;
+
+export function parseObserverCoord(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  const cleaned = String(raw).trim().replace(',', '.').replace(/°/g, '');
+  if (!cleaned) return null;
+  if (!/^[+-]?\d+(\.\d+)?$/.test(cleaned)) return null;
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
+export function setObserverCoords(latInput, lonInput) {
+  const lat = parseObserverCoord(latInput);
+  const lon = parseObserverCoord(lonInput);
+  if (
+    lat === null ||
+    lon === null ||
+    lat < -90 ||
+    lat > 90 ||
+    lon < -180 ||
+    lon > 180
+  ) {
+    manualObserverCoords = null;
+    return getObserverCoords();
+  }
+  manualObserverCoords = {
+    latDeg: Math.max(-89.5, Math.min(89.5, lat)),
+    lonDeg: lon
+  };
+  return getObserverCoords();
+}
+
+function getSystemTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
+function getStandardNonDstOffsetMinutes() {
+  const yr = new Date().getFullYear();
+  const jan = new Date(yr, 0, 1, 12, 0, 0, 0).getTimezoneOffset();
+  const jul = new Date(yr, 6, 1, 12, 0, 0, 0).getTimezoneOffset();
+  // DST shifts local clocks forward, making (UTC - local) smaller in summer in both hemispheres
+  return Math.max(jan, jul);
+}
+
+function getRegionFallbackLat(tz) {
+  if (!tz || typeof tz !== 'string') return 50.0;
+  if (tz.startsWith('Europe/')) return 48.8;
+  if (tz.startsWith('America/')) return 38.0;
+  if (tz.startsWith('Asia/')) return 34.0;
+  if (tz.startsWith('Australia/')) return -33.0;
+  if (tz.startsWith('Africa/')) return 5.0;
+  if (tz.startsWith('Pacific/')) return -18.0;
+  return 50.0;
+}
+
+export function getObserverCoords(timeZoneOverride = null) {
+  const tzRaw = timeZoneOverride || getSystemTimeZone();
+  if (!timeZoneOverride && manualObserverCoords) {
+    return {
+      latDeg: manualObserverCoords.latDeg,
+      lonDeg: manualObserverCoords.lonDeg,
+      source: 'manual',
+      timeZone: tzRaw
+    };
+  }
+  const canonicalTz = tzRaw ? (IANA_ZONE_ALIASES[tzRaw] || tzRaw) : null;
+  if (canonicalTz && IANA_ZONE_COORDS[canonicalTz]) {
+    const entry = IANA_ZONE_COORDS[canonicalTz];
+    return {
+      latDeg: entry.lat,
+      lonDeg: entry.lon,
+      source: 'iana',
+      timeZone: tzRaw
+    };
+  }
+  if (!canonicalTz || canonicalTz === 'UTC' || canonicalTz === 'Etc/UTC' || canonicalTz === 'GMT') {
+    return {
+      latDeg: 51.5074,
+      lonDeg: 0.0,
+      source: 'fallback',
+      timeZone: tzRaw
+    };
+  }
+  const stdOffsetMin = getStandardNonDstOffsetMinutes();
+  return {
+    latDeg: getRegionFallbackLat(canonicalTz),
+    lonDeg: -stdOffsetMin / 4,
+    source: 'fallback',
+    timeZone: tzRaw
+  };
+}
+
 export function findNewMoonBefore(jd) {
   // Reference New Moon: Jan 6 2000 18:14 UT = 2451550.2597
   const kApprox = Math.floor((jd - 2451550.2597) / SYNODIC_MONTH);
@@ -311,14 +556,6 @@ export function findNewMoonBefore(jd) {
     nm = nmNextCheck;
   }
   return nm;
-}
-
-function getObserverCoords() {
-  // Derive observer longitude from browser timezone offset; clamp latitude to 50 deg N
-  // so the Moon rises and sets reliably every lunar orbit without polar edge cases.
-  const offsetMin = new Date().getTimezoneOffset(); // UTC - local in minutes
-  const lonDeg = -offsetMin / 4;
-  return { latDeg: 50.0, lonDeg };
 }
 
 function getMoonAltitudeDeg(jd, latDeg, lonDeg) {
@@ -384,12 +621,12 @@ function findMoonrisesBetween(jdStart, jdEnd, latDeg, lonDeg) {
 
 export function getLunationIntervals(jd) {
   const nmPrev = findNewMoonBefore(jd);
-  const cacheKey = Math.round(nmPrev * 100);
+  const { latDeg, lonDeg } = getObserverCoords();
+  const cacheKey = `${Math.round(nmPrev * 100)}|${latDeg.toFixed(3)}|${lonDeg.toFixed(3)}`;
   if (lunationCache.has(cacheKey)) {
     return lunationCache.get(cacheKey);
   }
   const nmNext = refineNewMoon(nmPrev + SYNODIC_MONTH);
-  const { latDeg, lonDeg } = getObserverCoords();
   const rises = findMoonrisesBetween(nmPrev, nmNext, latDeg, lonDeg);
 
   const intervals = [];
@@ -403,6 +640,9 @@ export function getLunationIntervals(jd) {
   intervals.push({ day: dayNum, startJD: cursor, endJD: nmNext, startsBy: 'moonrise' });
 
   const payload = { nmPrev, nmNext, intervals };
+  if (lunationCache.size > 64) {
+    lunationCache.clear();
+  }
   lunationCache.set(cacheKey, payload);
   return payload;
 }
@@ -1555,9 +1795,16 @@ export function computeRawDiagnosticData(
     }
   }
 
+  const observer = getObserverCoords();
   return {
     selectedDate: `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`,
     referenceTime: formatHM(refMoment),
+    observer: {
+      source: observer.source,
+      timeZone: observer.timeZone,
+      latitude: Number(observer.latDeg.toFixed(4)),
+      longitude: Number(observer.lonDeg.toFixed(4))
+    },
     input: {
       birthDate: birthDateStr || null,
       birthTime: birthDateStr ? (birthTimeStr || '12:00 (default)') : null

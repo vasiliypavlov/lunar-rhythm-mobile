@@ -1074,10 +1074,20 @@ body {
 }
 
 .birth-row,
+.coord-row,
 .voice-row {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.coord-input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.location-status.is-warning {
+  color: var(--semantic-warning);
 }
 
 .birth-date-wrap {
@@ -1515,6 +1525,7 @@ textarea:focus-visible {
 }
 
 .birth-row,
+.coord-row,
 .dict-lang-row,
 .voice-row,
 .inline-field-row {

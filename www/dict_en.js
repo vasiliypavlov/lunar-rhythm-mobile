@@ -613,6 +613,15 @@ export const DICT_EN = {
     "msg_dict_error": "File error",
     "reminder_prefix_tts": "Reminder for the current lunar day.",
     "harmony_bridge_minimum": "External conditions add momentum, while your personal rhythm is tuned for recovery — use this impulse only to wrap up existing items without starting new ones.",
-    "harmony_bridge_decline": "External conditions add momentum, while your personal rhythm is in calm decline — channel this drive into closing ongoing tasks and organizing."
+    "harmony_bridge_decline": "External conditions add momentum, while your personal rhythm is in calm decline — channel this drive into closing ongoing tasks and organizing.",
+    "settings_location_title": "Observer Coordinates",
+    "settings_location_desc": "By default, coordinates are derived from your time zone without GPS. Enter latitude and longitude manually for exact local moonrise and moonset.",
+    "label_observer_lat": "Latitude",
+    "placeholder_observer_lat": "Lat (e.g. 40.71)",
+    "label_observer_lon": "Longitude",
+    "placeholder_observer_lon": "Lon (e.g. -74.01)",
+    "location_status_auto": "Active: Auto",
+    "location_status_manual": "Active: Manual",
+    "location_status_incomplete": "Enter both coordinates: latitude (-90 to 90) and longitude (-180 to 180)."
   }
 };

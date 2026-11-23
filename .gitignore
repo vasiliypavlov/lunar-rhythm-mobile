@@ -34,3 +34,5 @@ Thumbs.db
 # Временные файлы
 .cache/
 tmp/
+lunar-rhythm-mobile-observer-coords.patch
+scripts/compare-prompts.mjs

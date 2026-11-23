@@ -613,6 +613,15 @@ export const DICT_ES = {
     "msg_dict_error": "Error de archivo",
     "reminder_prefix_tts": "Recordatorio para el día lunar actual.",
     "harmony_bridge_minimum": "El entorno externo aporta dinamismo, pero tu ritmo personal está enfocado en descansar — usa este impulso solo para cerrar tareas en curso sin abrir nuevas.",
-    "harmony_bridge_decline": "El entorno externo aporta dinamismo, pero tu ritmo personal está en descenso sereno — dirige este empuje a concluir tareas iniciadas y ordenar pendientes."
+    "harmony_bridge_decline": "El entorno externo aporta dinamismo, pero tu ritmo personal está en descenso sereno — dirige este empuje a concluir tareas iniciadas y ordenar pendientes.",
+    "settings_location_title": "Coordenadas del observador",
+    "settings_location_desc": "Por defecto, las coordenadas se calculan por tu zona horaria sin GPS. Indica latitud y longitud manualmente para ajustar la salida y puesta de la Luna.",
+    "label_observer_lat": "Latitud",
+    "placeholder_observer_lat": "Lat. (ej. 40.42)",
+    "label_observer_lon": "Longitud",
+    "placeholder_observer_lon": "Lon. (ej. -3.70)",
+    "location_status_auto": "Actual: Auto",
+    "location_status_manual": "Actual: Manual",
+    "location_status_incomplete": "Introduce ambos valores: latitud (−90…90) y longitud (−180…180)."
   }
 };

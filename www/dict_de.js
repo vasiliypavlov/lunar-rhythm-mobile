@@ -613,6 +613,15 @@ export const DICT_DE = {
     "msg_dict_error": "Dateifehler",
     "reminder_prefix_tts": "Erinnerung für den aktuellen Mondtag.",
     "harmony_bridge_minimum": "Das äußere Umfeld bringt Dynamik, doch Ihr persönlicher Takt steht auf Erholung — nutzen Sie diesen Impuls nur zum ruhigen Abschließen laufender Dinge ohne Neustarts.",
-    "harmony_bridge_decline": "Das äußere Umfeld bringt Dynamik, doch Ihr persönlicher Takt geht in einen ruhigen Abstieg — lenken Sie den Schwung auf den Abschluss begonnener Aufgaben und Ordnung."
+    "harmony_bridge_decline": "Das äußere Umfeld bringt Dynamik, doch Ihr persönlicher Takt geht in einen ruhigen Abstieg — lenken Sie den Schwung auf den Abschluss begonnener Aufgaben und Ordnung.",
+    "settings_location_title": "Beobachter-Koordinaten",
+    "settings_location_desc": "Standardmäßig werden die Koordinaten ohne GPS aus Ihrer Zeitzone abgeleitet. Geben Sie Breiten- und Längengrad manuell für exakten Mondauf- und -untergang ein.",
+    "label_observer_lat": "Breitengrad",
+    "placeholder_observer_lat": "Breite (z. B. 52.52)",
+    "label_observer_lon": "Längengrad",
+    "placeholder_observer_lon": "Länge (z. B. 13.41)",
+    "location_status_auto": "Aktiv: Auto",
+    "location_status_manual": "Aktiv: Manuell",
+    "location_status_incomplete": "Bitte beide Werte eingeben: Breite (−90…90) und Länge (−180…180)."
   }
 };
