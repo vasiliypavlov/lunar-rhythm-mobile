@@ -689,7 +689,7 @@ const FAST_PLANETS = ['Moon', 'Mercury', 'Venus', 'Mars'];
 const SLOW_PLANETS = ['Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'];
 const TRANSIT_PLANETS = [...FAST_PLANETS, ...SLOW_PLANETS];
 
-const ASPECTS = [
+export const ASPECTS = [
   { key: 'edge_conjunction', angle: 0 },
   { key: 'edge_sextile', angle: 60 },
   { key: 'edge_square', angle: 90 },
@@ -709,7 +709,7 @@ const PLANET_GROUP_WEIGHT = {
   Pluto: 2.0
 };
 
-const PLANET_ORB = {
+export const PLANET_ORB = {
   Moon: 2.2,
   Mercury: 1.0,
   Venus: 1.0,
