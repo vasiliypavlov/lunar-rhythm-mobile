@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Ритм Дня — Android-приложение на базе Capacitor, портированное из Chrome-расширения lunar-rhythm-ext",
-  "license": "MIT",
+  "license": "GPL-3.0",
   "keywords": [
     "capacitor",
     "android",
