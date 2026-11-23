@@ -506,6 +506,7 @@ export const DICT_DE = {
     ]
   },
   "ui_labels": {
+    "ai_forecast_title": "Astrologische Tagesprognose",
     "app_title": "Tagesrhythmus",
     "app_subtitle": "Lunar Rhythm Navigator",
     "lunar_day_short": "M.T.",

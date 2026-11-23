@@ -506,6 +506,7 @@ export const DICT_RU = {
     ]
   },
   "ui_labels": {
+    "ai_forecast_title": "Астрологический прогноз на день",
     "app_title": "Ритм Дня",
     "app_subtitle": "Lunar Rhythm Navigator",
     "lunar_day_short": "л.д.",

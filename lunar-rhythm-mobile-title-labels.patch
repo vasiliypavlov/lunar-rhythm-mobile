@@ -1,0 +1,60 @@
+diff --git a/www/dict_de.js b/www/dict_de.js
+index 6511f3a..cf1400a 100644
+--- a/www/dict_de.js
++++ b/www/dict_de.js
+@@ -506,6 +506,7 @@ export const DICT_DE = {
+     ]
+   },
+   "ui_labels": {
++    "ai_forecast_title": "Astrologische Tagesprognose",
+     "app_title": "Tagesrhythmus",
+     "app_subtitle": "Lunar Rhythm Navigator",
+     "lunar_day_short": "M.T.",
+diff --git a/www/dict_en.js b/www/dict_en.js
+index 335b185..88a8155 100644
+--- a/www/dict_en.js
++++ b/www/dict_en.js
+@@ -506,6 +506,7 @@ export const DICT_EN = {
+     ]
+   },
+   "ui_labels": {
++    "ai_forecast_title": "Daily Astrological Forecast",
+     "app_title": "Daily Rhythm",
+     "app_subtitle": "Lunar Rhythm Navigator",
+     "lunar_day_short": "l.d.",
+diff --git a/www/dict_es.js b/www/dict_es.js
+index f21b486..d160dc5 100644
+--- a/www/dict_es.js
++++ b/www/dict_es.js
+@@ -506,6 +506,7 @@ export const DICT_ES = {
+     ]
+   },
+   "ui_labels": {
++    "ai_forecast_title": "Pronóstico astrológico del día",
+     "app_title": "Ritmo del Día",
+     "app_subtitle": "Lunar Rhythm Navigator",
+     "lunar_day_short": "d.l.",
+diff --git a/www/dict_fr.js b/www/dict_fr.js
+index 9f9b295..7aa2713 100644
+--- a/www/dict_fr.js
++++ b/www/dict_fr.js
+@@ -506,6 +506,7 @@ export const DICT_FR = {
+     ]
+   },
+   "ui_labels": {
++    "ai_forecast_title": "Prévision astrologique du jour",
+     "app_title": "Rythme du Jour",
+     "app_subtitle": "Lunar Rhythm Navigator",
+     "lunar_day_short": "j.l.",
+diff --git a/www/dict_ru.js b/www/dict_ru.js
+index 6a34427..2ef6e58 100644
+--- a/www/dict_ru.js
++++ b/www/dict_ru.js
+@@ -506,6 +506,7 @@ export const DICT_RU = {
+     ]
+   },
+   "ui_labels": {
++    "ai_forecast_title": "Астрологический прогноз на день",
+     "app_title": "Ритм Дня",
+     "app_subtitle": "Lunar Rhythm Navigator",
+     "lunar_day_short": "л.д.",

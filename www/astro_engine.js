@@ -12,13 +12,99 @@ export const ZODIAC_SIGNS = [
   'Стрелец', 'Козерог', 'Водолей', 'Рыбы'
 ];
 
-export const PHASE_COLORS = {
-  neutral: '#3F3F3F',
-  phase_peak: '#1B5E20',
-  phase_decline: '#1A3A5C',
-  phase_minimum: '#9E140B',
-  phase_rise: '#8D4918'
+export const PHASE_TONES = {
+  neutral:         { hero: '#3F3F3F', bar: '#5A606D' },
+  min_core:        { hero: '#6E261E', bar: '#D45547' }, // плотная обожжённая глина (минимум)
+  min_to_rise:     { hero: '#723919', bar: '#DF7D35' }, // жёлто-красный (жжёная сиена)
+  rise_core:       { hero: '#584517', bar: '#DBA832' }, // плотная охра (разгон)
+  rise_to_peak:    { hero: '#384E1D', bar: '#8BB93E' }, // жёлто-зелёный (олива/мох)
+  peak_core:       { hero: '#194D25', bar: '#32A85C' }, // глубокий хвойный (пик)
+  peak_to_decline: { hero: '#14454A', bar: '#2B9EA3' }, // зелёно-синий (морская волна)
+  decline_core:    { hero: '#193454', bar: '#4A89D6' }, // глубокий сланец/синий (спад)
+  decline_to_min:  { hero: '#452348', bar: '#A45EC7' }  // красно-синий (сливовый)
 };
+
+export const PHASE_COLORS = {
+  neutral: PHASE_TONES.neutral.hero,
+  phase_peak: PHASE_TONES.peak_core.hero,
+  phase_decline: PHASE_TONES.decline_core.hero,
+  phase_minimum: PHASE_TONES.min_core.hero,
+  phase_rise: PHASE_TONES.rise_core.hero
+};
+
+const TONE_ASPECT_VALENCE = {
+  edge_sextile: 1,
+  edge_trine: 1,
+  edge_conjunction: 0,
+  edge_square: -1,
+  edge_opposition: -1
+};
+const TONE_ACTIVE_LUNAR_DAYS = new Set([3, 7, 8, 10, 11, 14, 17, 20, 21]);
+const TONE_RESTRAINED_LUNAR_DAYS = new Set([9, 15, 19, 23, 25, 26, 29, 30]);
+
+export function resolveForecastPhaseTone({
+  phaseKey,
+  phaseStageKey = 'middle',
+  dailyFocusEdge = null,
+  backgroundEdge = null,
+  isBackgroundExactPeak = false,
+  activeLunarDay = 1
+}) {
+  const focusValence = dailyFocusEdge ? (TONE_ASPECT_VALENCE[dailyFocusEdge.aspectKey] ?? 0) : 0;
+  const bgWarning = Boolean(
+    isBackgroundExactPeak &&
+    backgroundEdge &&
+    (TONE_ASPECT_VALENCE[backgroundEdge.aspectKey] ?? 0) < 0
+  );
+  const eff = bgWarning && focusValence >= 0 ? -1 : focusValence;
+  const lunarPol = TONE_ACTIVE_LUNAR_DAYS.has(Number(activeLunarDay))
+    ? 1
+    : TONE_RESTRAINED_LUNAR_DAYS.has(Number(activeLunarDay))
+    ? -1
+    : 0;
+
+  let toneKey = 'min_core';
+  switch (phaseKey) {
+    case 'phase_minimum':
+      if (phaseStageKey === 'start') toneKey = eff > 0 && lunarPol >= 0 ? 'min_core' : 'decline_to_min';
+      else if (phaseStageKey === 'middle') toneKey = eff < 0 && lunarPol < 0 ? 'decline_to_min' : 'min_core';
+      else toneKey = eff < 0 || lunarPol < 0 ? 'min_core' : 'min_to_rise';
+      break;
+    case 'phase_rise':
+      if (phaseStageKey === 'start') toneKey = eff > 0 && lunarPol > 0 ? 'rise_core' : 'min_to_rise';
+      else if (phaseStageKey === 'middle') {
+        if (eff < 0 || lunarPol < 0) toneKey = 'min_to_rise';
+        else if (eff > 0 && lunarPol >= 0) toneKey = 'rise_to_peak';
+        else toneKey = 'rise_core';
+      } else {
+        toneKey = eff < 0 ? 'rise_core' : 'rise_to_peak';
+      }
+      break;
+    case 'phase_peak':
+      if (phaseStageKey === 'start') toneKey = eff > 0 && lunarPol >= 0 ? 'peak_core' : 'rise_to_peak';
+      else if (phaseStageKey === 'middle') {
+        if (eff < 0) toneKey = lunarPol < 0 ? 'peak_to_decline' : 'rise_to_peak';
+        else toneKey = 'peak_core';
+      } else {
+        toneKey = eff > 0 && lunarPol > 0 ? 'peak_core' : 'peak_to_decline';
+      }
+      break;
+    case 'phase_decline':
+    default:
+      if (phaseStageKey === 'start') toneKey = eff < 0 ? 'decline_core' : 'peak_to_decline';
+      else if (phaseStageKey === 'middle') {
+        if (eff < 0) toneKey = 'decline_to_min';
+        else if (eff > 0 && lunarPol > 0) toneKey = 'peak_to_decline';
+        else toneKey = 'decline_core';
+      } else {
+        toneKey = eff > 0 && lunarPol >= 0 ? 'decline_core' : 'decline_to_min';
+      }
+      break;
+  }
+
+  const palette = PHASE_TONES[toneKey] || PHASE_TONES.neutral;
+  return { key: toneKey, hero: palette.hero, bar: palette.bar };
+}
 
 export function norm360(deg) {
   const r = deg % 360;
@@ -1295,7 +1381,6 @@ export function computePersonalState(
   const phaseKey = getPersonalPhaseKey(personalPhase);
   const phaseStage = getPhaseStage(personalPhase, phaseKey);
   const ageClassKey = getAgeClassKey(birthObj, targetDate);
-  const headerColor = PHASE_COLORS[phaseKey];
 
   const middayTarget = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 12, 0, 0, 0);
   const graph = buildLayeredAspectGraph(birthObj, middayTarget, momentForPhase);
@@ -1341,6 +1426,19 @@ export function computePersonalState(
     recentRoles: [rolePrev1, rolePrev2]
   });
 
+  const activeLunarDay = getLunarDayAt(momentForPhase).day;
+  const forecastTone = resolveForecastPhaseTone({
+    phaseKey,
+    phaseStageKey: phaseStage.key,
+    dailyFocusEdge,
+    backgroundEdge,
+    isBackgroundExactPeak,
+    activeLunarDay
+  });
+  const headerColor = forecastTone.hero;
+  const timelineColor = forecastTone.bar;
+  const toneKey = forecastTone.key;
+
   const timeSlot = getTimeSlot(momentForPhase);
 
   return {
@@ -1353,7 +1451,9 @@ export function computePersonalState(
     ageClassKey,
     roleKey,
     roleScores,
+    toneKey,
     headerColor,
+    timelineColor,
     fastEdges,
     backgroundEdges,
     dailyFocusEdge,

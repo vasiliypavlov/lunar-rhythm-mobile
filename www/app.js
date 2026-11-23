@@ -2839,7 +2839,7 @@ function renderTimelineStrip(dict) {
     if (personal) {
       const bar = document.createElement('span');
       bar.className = 'tl-phase-bar';
-      bar.style.background = personal.headerColor;
+      bar.style.background = personal.timelineColor || personal.headerColor;
       btn.appendChild(bar);
     }
 
