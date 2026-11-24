@@ -122,6 +122,18 @@
         </div>
         <p id="reminders-status-msg" class="status-feedback hidden"></p>
 
+        <div id="reminders-backup-card" class="surface-card backup-card hidden">
+          <div class="backup-head">
+            <span class="card-title" data-i18n="reminders_backup_title">Резервная копия (.ics / .json)</span>
+            <button id="btn-close-reminders-backup" class="btn-close-small" type="button" aria-label="Закрыть">&times;</button>
+          </div>
+          <textarea id="reminders-backup-textarea" class="text-input textarea-input backup-textarea tabular-nums" rows="4" placeholder="Здесь появится экспортированный .ics, либо вставьте сюда текст .ics / .json для восстановления напоминаний..."></textarea>
+          <div class="backup-actions">
+            <button id="btn-copy-backup-text" class="btn-secondary-compact" type="button" data-i18n="btn_copy_backup">Копировать</button>
+            <button id="btn-import-backup-text" class="btn-primary-compact" type="button" data-i18n="btn_import_from_text">Загрузить из текста</button>
+          </div>
+        </div>
+
         <form id="reminder-form" class="surface-card form-card hidden">
           <div class="segmented-control" role="tablist">
             <button type="button" id="mode-btn-lunar" class="seg-btn active" data-mode="lunar">По лунным суткам</button>
@@ -167,6 +179,9 @@
         </form>
 
         <div id="reminders-list" class="reminders-list"></div>
+        <div class="backup-toggle-wrap">
+          <button id="btn-toggle-reminders-backup" class="text-link-btn" type="button" data-i18n="reminders_backup_toggle">Резервная копия / вставка .ics текстом</button>
+        </div>
       </section>
 
       <!-- TAB 3: SETTINGS & DICTIONARIES -->

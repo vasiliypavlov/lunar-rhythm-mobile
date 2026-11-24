@@ -1982,6 +1982,12 @@ function updateStaticUILabels(dict) {
 
   document.getElementById('day-note-input').placeholder = labels.day_note_placeholder;
   document.getElementById('input-reminder-text').placeholder = labels.placeholder_reminder_text;
+  const backupTextarea = document.getElementById('reminders-backup-textarea');
+  if (backupTextarea && labels.reminders_backup_placeholder) {
+    backupTextarea.placeholder = labels.reminders_backup_placeholder;
+  }
+  const closeBackupBtn = document.getElementById('btn-close-reminders-backup');
+  if (closeBackupBtn) closeBackupBtn.setAttribute('aria-label', labels.btn_close);
   document.getElementById('btn-close-day-note').setAttribute('aria-label', labels.btn_close);
   document.getElementById('timeline-section').setAttribute('aria-label', labels.timeline_aria);
   document.getElementById('lunar-timeline-strip').setAttribute('aria-label', labels.timeline_aria);
@@ -4083,77 +4089,156 @@ function bindEvents() {
     formEl.classList.add('hidden');
   });
 
+  async function copyTextToClipboard(text) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // Fallback below for older Android WebView
+      }
+    }
+    if (typeof document !== 'undefined' && document.body && typeof document.createElement === 'function') {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        if (typeof ta.setSelectionRange === 'function') {
+          ta.setSelectionRange(0, text.length);
+        }
+        const ok = typeof document.execCommand === 'function' ? document.execCommand('copy') : false;
+        ta.remove();
+        if (ok) return true;
+      } catch {
+        // Ignore execCommand error
+      }
+    }
+    return false;
+  }
+
   async function saveOrShareExportFile({ filename, content, mimeType, title }) {
     const capPlugins = typeof window !== 'undefined' ? window.Capacitor?.Plugins : null;
 
     // 1. Capacitor Filesystem (+ optional Share) if available in native shell
     if (capPlugins?.Filesystem && typeof capPlugins.Filesystem.writeFile === 'function') {
       try {
-        const writeRes = await capPlugins.Filesystem.writeFile({
-          path: filename,
-          data: content,
-          directory: 'DOCUMENTS',
-          encoding: 'utf8',
-          recursive: true
-        });
-        if (capPlugins.Share && typeof capPlugins.Share.share === 'function' && writeRes?.uri) {
-          try {
-            await capPlugins.Share.share({
-              title: title || filename,
-              url: writeRes.uri,
-              dialogTitle: filename
-            });
-          } catch {
-            // File is already written to Documents even if share sheet is dismissed
+        if (typeof capPlugins.Filesystem.checkPermissions === 'function') {
+          const perm = await capPlugins.Filesystem.checkPermissions();
+          if (perm?.publicStorage !== 'granted' && typeof capPlugins.Filesystem.requestPermissions === 'function') {
+            await capPlugins.Filesystem.requestPermissions();
           }
         }
-        return { ok: true, method: 'documents', filename };
       } catch {
-        // Fallback if scoped storage requires Cache + Share
-        if (capPlugins.Share && typeof capPlugins.Share.share === 'function') {
-          try {
-            const cacheRes = await capPlugins.Filesystem.writeFile({
-              path: filename,
-              data: content,
-              directory: 'CACHE',
-              encoding: 'utf8',
-              recursive: true
-            });
-            await capPlugins.Share.share({
-              title: title || filename,
-              url: cacheRes?.uri,
-              dialogTitle: filename
-            });
-            return { ok: true, method: 'share', filename };
-          } catch (shareErr) {
-            if (shareErr?.name === 'AbortError' || /cancel/i.test(String(shareErr?.message || ''))) {
-              return { ok: false, aborted: true, filename };
+        // Older/custom Filesystem plugins may not implement checkPermissions/requestPermissions
+      }
+
+      for (const dir of ['DOCUMENTS', 'EXTERNAL']) {
+        try {
+          const writeRes = await capPlugins.Filesystem.writeFile({
+            path: filename,
+            data: content,
+            directory: dir,
+            encoding: 'utf8',
+            recursive: true
+          });
+          if (capPlugins.Share && typeof capPlugins.Share.share === 'function' && writeRes?.uri) {
+            try {
+              await capPlugins.Share.share({
+                title: title || filename,
+                url: writeRes.uri,
+                dialogTitle: filename
+              });
+            } catch {
+              // File is already written to device storage even if share sheet is dismissed
             }
+          }
+          return { ok: true, method: dir === 'DOCUMENTS' ? 'documents' : 'external', filename };
+        } catch {
+          // Try next accessible directory
+        }
+      }
+
+      if (capPlugins.Share && typeof capPlugins.Share.share === 'function') {
+        try {
+          const cacheRes = await capPlugins.Filesystem.writeFile({
+            path: filename,
+            data: content,
+            directory: 'CACHE',
+            encoding: 'utf8',
+            recursive: true
+          });
+          await capPlugins.Share.share({
+            title: title || filename,
+            url: cacheRes?.uri,
+            dialogTitle: filename
+          });
+          return { ok: true, method: 'share', filename };
+        } catch (shareErr) {
+          if (shareErr?.name === 'AbortError' || /cancel/i.test(String(shareErr?.message || ''))) {
+            return { ok: false, aborted: true, filename };
           }
         }
       }
     }
 
-    // 2. Web Share API Level 2 (native Android WebView / Mobile Chrome / iOS Share sheet)
-    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function' && typeof File === 'function') {
-      try {
-        const file = new File([content], filename, { type: mimeType });
-        if (!navigator.canShare || navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: title || filename
-          });
-          return { ok: true, method: 'share', filename };
+    // 2. Web Share API Level 2 with file (modern Android Chrome / WebView / iOS)
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      if (typeof File === 'function') {
+        try {
+          const file = new File([content], filename, { type: mimeType });
+          if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: title || filename
+            });
+            return { ok: true, method: 'share', filename };
+          }
+        } catch (err) {
+          if (err?.name === 'AbortError') {
+            return { ok: false, aborted: true, filename };
+          }
         }
+      }
+
+      // 2b. Web Share text fallback when file sharing isn't supported
+      try {
+        await navigator.share({
+          title: title || filename,
+          text: content
+        });
+        return { ok: true, method: 'share', filename };
       } catch (err) {
         if (err?.name === 'AbortError') {
           return { ok: false, aborted: true, filename };
         }
-        // Otherwise fall back to download / clipboard below
       }
     }
 
-    // 3. Native WebView without file-share support: try Capacitor Share text or clipboard, plus <a download>
+    // 3. Capacitor Share plugin without Filesystem
+    if (capPlugins?.Share && typeof capPlugins.Share.share === 'function') {
+      try {
+        await capPlugins.Share.share({ title: filename, text: content, dialogTitle: filename });
+        return { ok: true, method: 'share', filename };
+      } catch (err) {
+        if (err?.name === 'AbortError' || /cancel/i.test(String(err?.message || ''))) {
+          return { ok: false, aborted: true, filename };
+        }
+      }
+    }
+
+    // 4. Native WebView without file/share plugins: copy to clipboard cleanly for inline backup drawer
+    if (isNativePlatform()) {
+      const copied = await copyTextToClipboard(content);
+      return { ok: copied, method: 'clipboard', filename };
+    }
+
+    // 5. Desktop / Mobile Browser download
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -4163,27 +4248,85 @@ function bindEvents() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-    if (isNativePlatform()) {
-      if (capPlugins?.Share && typeof capPlugins.Share.share === 'function') {
-        try {
-          await capPlugins.Share.share({ title: filename, text: content, dialogTitle: filename });
-          return { ok: true, method: 'share', filename };
-        } catch (err) {
-          if (err?.name === 'AbortError') return { ok: false, aborted: true, filename };
-        }
-      }
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        try {
-          await navigator.clipboard.writeText(content);
-          return { ok: true, method: 'clipboard', filename };
-        } catch {
-          // Ignore clipboard denial
-        }
-      }
-    }
-
     return { ok: true, method: 'download', filename };
+  }
+
+  const backupCardEl = document.getElementById('reminders-backup-card');
+  const backupTextareaEl = document.getElementById('reminders-backup-textarea');
+  const toggleBackupBtn = document.getElementById('btn-toggle-reminders-backup');
+  const closeBackupBtn = document.getElementById('btn-close-reminders-backup');
+  const copyBackupBtn = document.getElementById('btn-copy-backup-text');
+  const importBackupTextBtn = document.getElementById('btn-import-backup-text');
+
+  async function importRemindersFromText(rawText) {
+    const labels = getUILabels();
+    const parsedList = parseRemindersImportText(rawText);
+    if (!parsedList.length) {
+      showRemindersStatus(labels.msg_reminders_import_empty, true);
+      return false;
+    }
+    const existingKeys = new Set(appState.reminders.map(reminderDedupeKey));
+    const added = [];
+    let skipped = 0;
+    for (const rem of parsedList) {
+      const key = reminderDedupeKey(rem);
+      if (existingKeys.has(key)) {
+        skipped += 1;
+        continue;
+      }
+      existingKeys.add(key);
+      added.push(rem);
+    }
+    if (!added.length) {
+      showRemindersStatus(labels.msg_reminders_none_added, false);
+      return true;
+    }
+    await persistReminders([...added, ...appState.reminders]);
+    const skipPart = skipped > 0 ? ` (${labels.msg_reminders_skipped_dups}: ${skipped})` : '';
+    showRemindersStatus(`${labels.msg_reminders_imported}: ${added.length}${skipPart}`, false);
+    renderUI();
+    return true;
+  }
+
+  if (toggleBackupBtn && backupCardEl) {
+    toggleBackupBtn.addEventListener('click', () => {
+      const isHidden = backupCardEl.classList.contains('hidden');
+      if (isHidden) {
+        formEl.classList.add('hidden');
+        if (backupTextareaEl && !backupTextareaEl.value.trim() && appState.reminders.length) {
+          backupTextareaEl.value = buildRemindersIcs(appState.reminders, getActiveDictionary());
+        }
+        backupCardEl.classList.remove('hidden');
+      } else {
+        backupCardEl.classList.add('hidden');
+      }
+    });
+  }
+  if (closeBackupBtn && backupCardEl) {
+    closeBackupBtn.addEventListener('click', () => {
+      backupCardEl.classList.add('hidden');
+    });
+  }
+  if (copyBackupBtn && backupTextareaEl) {
+    copyBackupBtn.addEventListener('click', async () => {
+      const labels = getUILabels();
+      const text = backupTextareaEl.value.trim() || (appState.reminders.length ? buildRemindersIcs(appState.reminders, getActiveDictionary()) : '');
+      if (!text) {
+        showRemindersStatus(labels.msg_reminders_export_empty, true);
+        return;
+      }
+      backupTextareaEl.value = text;
+      const ok = await copyTextToClipboard(text);
+      showRemindersStatus(ok ? (labels.msg_backup_copied || labels.msg_reminders_export_clipboard) : labels.msg_reminders_import_error, !ok);
+    });
+  }
+  if (importBackupTextBtn && backupTextareaEl) {
+    importBackupTextBtn.addEventListener('click', async () => {
+      const ok = await importRemindersFromText(backupTextareaEl.value);
+      if (ok && backupCardEl) {
+        backupCardEl.classList.add('hidden');
+      }
+    });
   }
 
   const exportRemindersBtn = document.getElementById('btn-export-reminders');
@@ -4210,9 +4353,16 @@ function bindEvents() {
       const count = appState.reminders.length;
       if (result.method === 'documents') {
         showRemindersStatus(`${labels.msg_reminders_exported_docs || labels.msg_reminders_exported}: ${filename} (${count})`, false);
+      } else if (result.method === 'external') {
+        showRemindersStatus(`${labels.msg_reminders_exported_external || labels.msg_reminders_exported}: ${filename} (${count})`, false);
       } else if (result.method === 'share') {
         showRemindersStatus(`${labels.msg_reminders_exported_shared || labels.msg_reminders_exported}: ${filename} (${count})`, false);
       } else if (result.method === 'clipboard') {
+        if (backupTextareaEl) backupTextareaEl.value = icsContent;
+        if (backupCardEl) {
+          formEl.classList.add('hidden');
+          backupCardEl.classList.remove('hidden');
+        }
         showRemindersStatus(`${labels.msg_reminders_export_clipboard || labels.msg_reminders_exported}: ${filename} (${count})`, false);
       } else {
         showRemindersStatus(`${labels.msg_reminders_exported}: ${filename} (${count})`, false);
@@ -4228,33 +4378,9 @@ function bindEvents() {
       if (!file) return;
       try {
         const text = await file.text();
-        const parsedList = parseRemindersImportText(text);
-        if (!parsedList.length) {
-          showRemindersStatus(labels.msg_reminders_import_empty, true);
-          return;
-        }
-        const existingKeys = new Set(appState.reminders.map(reminderDedupeKey));
-        const added = [];
-        let skipped = 0;
-        for (const rem of parsedList) {
-          const key = reminderDedupeKey(rem);
-          if (existingKeys.has(key)) {
-            skipped += 1;
-            continue;
-          }
-          existingKeys.add(key);
-          added.push(rem);
-        }
-        if (!added.length) {
-          showRemindersStatus(labels.msg_reminders_none_added, false);
-          return;
-        }
-        await persistReminders([...added, ...appState.reminders]);
-        renderUI();
-        const skipPart = skipped > 0 ? ` (${labels.msg_reminders_skipped_dups}: ${skipped})` : '';
-        showRemindersStatus(`${labels.msg_reminders_imported}: ${added.length}${skipPart}`, false);
+        await importRemindersFromText(text);
       } catch (err) {
-        showRemindersStatus(`${labels.msg_reminders_import_error}: ${err.message}`, true);
+        showRemindersStatus(`${labels.msg_reminders_import_error}: ${err?.message || 'Read error'}`, true);
       } finally {
         e.target.value = '';
       }
@@ -4665,10 +4791,12 @@ function bindEvents() {
       status.classList.remove('hidden', 'error');
       const prefix = result.method === 'documents'
         ? (labels.msg_reminders_exported_docs || labels.msg_reminders_exported)
+        : result.method === 'external'
+        ? (labels.msg_reminders_exported_external || labels.msg_reminders_exported)
         : result.method === 'share'
         ? (labels.msg_reminders_exported_shared || labels.msg_reminders_exported)
         : result.method === 'clipboard'
-        ? (labels.msg_reminders_export_clipboard || labels.msg_reminders_exported)
+        ? (labels.msg_backup_copied || labels.msg_reminders_export_clipboard || labels.msg_reminders_exported)
         : labels.msg_reminders_exported;
       status.textContent = `${prefix}: ${filename}`;
     }
