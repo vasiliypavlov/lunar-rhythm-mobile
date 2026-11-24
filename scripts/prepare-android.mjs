@@ -35,12 +35,14 @@ const MANIFEST_PATH = path.join(
 );
 
 const REQUIRED_PERMISSIONS = [
-  'android.permission.SCHEDULE_EXACT_ALARM',
-  'android.permission.USE_EXACT_ALARM',
-  'android.permission.POST_NOTIFICATIONS',
-  'android.permission.RECEIVE_BOOT_COMPLETED',
-  'android.permission.VIBRATE',
-  'android.permission.WAKE_LOCK'
+  { name: 'android.permission.SCHEDULE_EXACT_ALARM' },
+  { name: 'android.permission.USE_EXACT_ALARM' },
+  { name: 'android.permission.POST_NOTIFICATIONS' },
+  { name: 'android.permission.RECEIVE_BOOT_COMPLETED' },
+  { name: 'android.permission.VIBRATE' },
+  { name: 'android.permission.WAKE_LOCK' },
+  { name: 'android.permission.READ_EXTERNAL_STORAGE', maxSdkVersion: 32 },
+  { name: 'android.permission.WRITE_EXTERNAL_STORAGE', maxSdkVersion: 32 }
 ];
 
 const WWW_ICONS = path.join(ROOT, 'www/icons');
@@ -104,9 +106,15 @@ function patchManifest() {
   let manifest = fs.readFileSync(MANIFEST_PATH, 'utf8');
   const added = [];
 
-  for (const permission of REQUIRED_PERMISSIONS) {
+  for (const entry of REQUIRED_PERMISSIONS) {
+    const permission = typeof entry === 'string' ? entry : entry.name;
+    const maxSdk =
+      typeof entry === 'object' && entry.maxSdkVersion
+        ? ` android:maxSdkVersion="${entry.maxSdkVersion}"`
+        : '';
+
     if (manifest.includes(`android:name="${permission}"`)) continue;
-    const tag = `    <uses-permission android:name="${permission}" />`;
+    const tag = `    <uses-permission android:name="${permission}"${maxSdk} />`;
     if (manifest.includes('</manifest>')) {
       manifest = manifest.replace('</manifest>', `${tag}\n</manifest>`);
       added.push(permission);

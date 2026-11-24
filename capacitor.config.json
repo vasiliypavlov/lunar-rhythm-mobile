@@ -1,6 +1,6 @@
 {
   "appId": "com.vasiliypavlov.lunarrhythm",
-  "appName": "Ритм Дня",
+  "appName": "Lunar Rhythm",
   "webDir": "www",
   "android": {
     "allowMixedContent": false,
