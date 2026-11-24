@@ -2,7 +2,7 @@ export const DICT_ES = {
   "meta": {
     "id": "base_default_es",
     "lang": "es-ES",
-    "name": "Perfil Base (Extendido v2.0)",
+    "name": "Perfil Base",
     "version": "2.0.0",
     "author": "System Core",
     "description": "Diccionario extendido de productividad, ritmos de actividad y escenarios diarios sin metáforas ni esoterismo.",
@@ -586,7 +586,7 @@ export const DICT_ES = {
     "slot_morning_title": "🌅 Mañana",
     "slot_day_title": "☀️ Día",
     "slot_evening_title": "🌙 Noche",
-    "settings_rhythm_title": "Ritmo Personal (Estado B)",
+    "settings_rhythm_title": "Ritmo Personal",
     "settings_rhythm_desc": "Sin fecha de nacimiento, la extensión funciona como un calendario lunar preciso. Indica tu fecha de nacimiento para calcular fases personales y aspectos.",
     "label_birth_date": "Fecha de nacimiento",
     "placeholder_birth_date": "dd.mm.aaaa",
@@ -744,6 +744,14 @@ export const DICT_ES = {
     "canvas_moon_hidden": "Luna (oculta)",
     "canvas_culmination_prefix": "Sur ~",
     "canvas_set_prefix": "Puesta ~",
-    "canvas_timeline_24h": "Sobre el horizonte (24 h)"
+    "canvas_timeline_24h": "Sobre el horizonte (24 h)",
+    "label_earth_view": "Vista terrestre",
+    "canvas_rise_exact_prefix": "Salida ",
+    "canvas_culmination_exact_prefix": "Sur ",
+    "canvas_set_exact_prefix": "Puesta ",
+    "canvas_sun_below": "Sol bajo el horizonte",
+    "horizon_live_mode": "Real (hoy)",
+    "horizon_model_mode": "Modelo ~",
+    "horizon_sun_label": "Sol"
   }
 };

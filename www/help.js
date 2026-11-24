@@ -2,6 +2,7 @@ import {
   SYNODIC_MONTH,
   getMoonPhaseInfo,
   getCalendarDayLunarSummary,
+  getHorizonDayDetails,
   getObserverCoords,
   parseObserverCoord,
   setObserverCoords,
@@ -133,6 +134,7 @@ tabs.forEach(tabBtn => {
 });
 
 let currentElong = 0;
+let horizonIsLiveToday = true;
 let isPlaying = false;
 let animFrame = null;
 let lastTime = 0;
@@ -147,6 +149,89 @@ const timeSlider = document.getElementById('timeSlider');
 const timeVal = document.getElementById('timeVal');
 const cycleBtn = document.getElementById('cycleBtn');
 const todayBtn = document.getElementById('todayBtn');
+const orbitalEarthViewCanvas = document.getElementById('orbitalEarthViewCanvas');
+const oevCtx = orbitalEarthViewCanvas ? orbitalEarthViewCanvas.getContext('2d') : null;
+
+function formatSliderHour(hr) {
+  const totalMin = Math.round(Math.max(0, Math.min(24, hr)) * 60);
+  const hh = Math.floor(totalMin / 60) % 24;
+  const mm = totalMin % 60;
+  return `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}`;
+}
+
+function setTimeSliderHour(hr) {
+  const clamped = Math.max(0, Math.min(24, Number(hr) || 0));
+  timeSlider.value = clamped.toFixed(1);
+  timeVal.textContent = formatSliderHour(clamped);
+}
+
+function drawEarthViewMoon(ctx2d, cx, cy, moonR, elongDeg, opts = {}) {
+  if (!ctx2d) return;
+  const eNorm = ((elongDeg % 360) + 360) % 360;
+  const rad = (eNorm * Math.PI) / 180;
+  const isStrictNew = eNorm <= 2 || eNorm >= 358;
+  const isNearSun = eNorm <= 7 || eNorm >= 353;
+
+  ctx2d.save();
+  ctx2d.translate(cx, cy);
+  if (opts.dimNearSun && isNearSun) ctx2d.globalAlpha = 0.72;
+
+  ctx2d.fillStyle = '#1b1f30';
+  ctx2d.beginPath();
+  ctx2d.arc(0, 0, moonR, 0, Math.PI * 2);
+  ctx2d.fill();
+
+  if (isStrictNew) {
+    ctx2d.strokeStyle = '#6b7599';
+    ctx2d.lineWidth = Math.max(1.25, moonR * 0.08);
+    ctx2d.setLineDash([3, 3]);
+    ctx2d.beginPath();
+    ctx2d.arc(0, 0, moonR, 0, Math.PI * 2);
+    ctx2d.stroke();
+    ctx2d.setLineDash([]);
+  } else {
+    ctx2d.beginPath();
+    const cosE = Math.cos(rad);
+    const rx = Math.abs(cosE) * moonR;
+
+    if (Math.abs(eNorm - 180) <= 2) {
+      ctx2d.arc(0, 0, moonR, 0, Math.PI * 2);
+    } else if (eNorm < 180) {
+      ctx2d.arc(0, 0, moonR, -Math.PI / 2, Math.PI / 2, false);
+      if (cosE > 0) {
+        ctx2d.ellipse(0, 0, rx, moonR, 0, Math.PI / 2, -Math.PI / 2, true);
+      } else {
+        ctx2d.ellipse(0, 0, rx, moonR, 0, Math.PI / 2, -Math.PI / 2, false);
+      }
+    } else {
+      ctx2d.arc(0, 0, moonR, Math.PI / 2, -Math.PI / 2, false);
+      if (cosE < 0) {
+        ctx2d.ellipse(0, 0, rx, moonR, 0, -Math.PI / 2, Math.PI / 2, false);
+      } else {
+        ctx2d.ellipse(0, 0, rx, moonR, 0, -Math.PI / 2, Math.PI / 2, true);
+      }
+    }
+
+    ctx2d.fillStyle = '#e8e6d8';
+    ctx2d.fill();
+    ctx2d.shadowColor = '#e8e6d8';
+    ctx2d.shadowBlur = opts.glow ?? 14;
+    ctx2d.fill();
+  }
+
+  ctx2d.restore();
+}
+
+function drawOrbitalEarthView(elongDeg) {
+  if (!oevCtx || !orbitalEarthViewCanvas) return;
+  const W = orbitalEarthViewCanvas.width;
+  const H = orbitalEarthViewCanvas.height;
+  oevCtx.clearRect(0, 0, W, H);
+  drawEarthViewMoon(oevCtx, W / 2, H / 2, Math.min(W, H) * 0.36, elongDeg, {
+    glow: 10,
+    dimNearSun: false
+  });
+}
 
 function updateUI(E, isSlider) {
   const h = hDict();
@@ -187,27 +272,40 @@ function updateUI(E, isSlider) {
   }
 
   drawOrbital();
+  drawOrbitalEarthView(normElong);
   drawHorizon();
 }
 
-elongSlider.addEventListener('input', (e) => { stopAnim(); updateUI(+e.target.value, true); });
-phaseSliderHorizon.addEventListener('input', (e) => { stopAnim(); updateUI(+e.target.value, true); });
+elongSlider.addEventListener('input', (e) => {
+  stopAnim();
+  horizonIsLiveToday = false;
+  updateUI(+e.target.value, true);
+  phaseSliderHorizon.value = currentElong;
+});
+phaseSliderHorizon.addEventListener('input', (e) => {
+  stopAnim();
+  horizonIsLiveToday = false;
+  updateUI(+e.target.value, true);
+  elongSlider.value = currentElong;
+});
 timeSlider.addEventListener('input', (e) => {
   const hr = parseFloat(e.target.value);
-  timeVal.textContent =
-    Math.floor(hr).toString().padStart(2, '0') + ':' +
-    Math.floor((hr % 1) * 60).toString().padStart(2, '0');
+  timeVal.textContent = formatSliderHour(hr);
   drawHorizon();
 });
 
 todayBtn.addEventListener('click', () => {
   stopAnim();
-  const nowInfo = getMoonPhaseInfo(new Date());
+  horizonIsLiveToday = true;
+  const now = new Date();
+  const nowInfo = getMoonPhaseInfo(now);
+  setTimeSliderHour(now.getHours() + now.getMinutes() / 60);
   updateUI(nowInfo.elong, false);
 });
 
 function startAnim() {
   isPlaying = true;
+  horizonIsLiveToday = false;
   cycleBtn.textContent = hDict().btn_pause || '⏸ Pause';
   lastTime = performance.now();
   const loop = (ts) => {
@@ -301,9 +399,22 @@ function drawOrbital() {
   octx.font = 'bold 13px sans-serif';
   octx.fillText(h.canvas_earth || 'EARTH', cx, cy + earthR + 14, 90);
 
-  const moonX = cx + Math.cos(rad) * moonOrbitR;
-  const moonY = cy - Math.sin(rad) * moonOrbitR;
+  // Направление на Солнце — влево (угол Math.PI). 0° = Новолуние слева между Солнцем и Землёй;
+  // движение против часовой стрелки: 0° (лево) -> 90° (низ) -> 180° (право, Полнолуние) -> 270° (верх).
+  const moonX = cx - Math.cos(rad) * moonOrbitR;
+  const moonY = cy + Math.sin(rad) * moonOrbitR;
 
+  // Ось Земля — Солнце (пунктир влево от Земли)
+  octx.strokeStyle = 'rgba(245, 183, 62, 0.35)';
+  octx.lineWidth = 1.25;
+  octx.setLineDash([3, 4]);
+  octx.beginPath();
+  octx.moveTo(cx, cy);
+  octx.lineTo(Math.max(20, cx - moonOrbitR - 24), cy);
+  octx.stroke();
+  octx.setLineDash([]);
+
+  // Вектор Земля — Луна
   octx.strokeStyle = '#7f9cf5';
   octx.lineWidth = 2;
   octx.beginPath();
@@ -311,17 +422,25 @@ function drawOrbital() {
   octx.lineTo(moonX, moonY);
   octx.stroke();
 
-  octx.beginPath();
-  octx.arc(cx, cy, 35, 0, -rad, true);
-  octx.strokeStyle = '#f5a47f';
-  octx.stroke();
+  if (currentElong > 0.5) {
+    octx.beginPath();
+    octx.arc(cx, cy, 35, Math.PI, Math.PI - rad, true);
+    octx.strokeStyle = '#f5a47f';
+    octx.lineWidth = 2;
+    octx.stroke();
+  }
 
-  const midRad = -rad / 2;
+  const midAngle = Math.PI - rad / 2;
+  const degLabelX = cx + Math.cos(midAngle) * 55;
+  const rawDegY = cy + Math.sin(midAngle) * 55 + 4;
+  const degLabelY = Math.abs(Math.sin(midAngle)) < 0.22 ? cy - 12 : rawDegY;
   octx.fillStyle = '#f5a47f';
   octx.font = 'bold 12px sans-serif';
   octx.textAlign = 'center';
-  octx.fillText(Math.round(currentElong) + '°', cx + Math.cos(midRad) * 55, cy + Math.sin(midRad) * 55 + 4);
+  octx.fillText(Math.round(currentElong) + '°', degLabelX, degLabelY);
 
+  // Физический вид сверху на орбите (Вариант Б): левая полусфера Луны всегда обращена к Солнцу и освещена,
+  // правая — в тени; фактическая фаза «как видна с Земли» показана на мини-диске в карточке ниже.
   octx.save();
   octx.translate(moonX, moonY);
 
@@ -330,25 +449,22 @@ function drawOrbital() {
   octx.arc(0, 0, moonR, 0, Math.PI * 2);
   octx.fill();
 
-  octx.beginPath();
-  const cosE = Math.cos(rad);
-  const rx = Math.abs(cosE) * moonR;
-  octx.arc(0, 0, moonR, Math.PI / 2, -Math.PI / 2, false);
-  if (cosE > 0) {
-    octx.ellipse(0, 0, rx, moonR, 0, Math.PI / 2, -Math.PI / 2, false);
-  } else {
-    octx.ellipse(0, 0, rx, moonR, 0, -Math.PI / 2, Math.PI / 2, true);
-  }
-  octx.fillStyle = '#e8e6d8';
-  octx.fill();
+  octx.strokeStyle = 'rgba(139, 145, 168, 0.35)';
+  octx.lineWidth = 1;
+  octx.stroke();
 
+  octx.beginPath();
+  octx.arc(0, 0, moonR, Math.PI / 2, -Math.PI / 2, false);
+  octx.closePath();
+  octx.fillStyle = '#e8e6d8';
   octx.shadowColor = '#e8e6d8';
-  octx.shadowBlur = 15;
+  octx.shadowBlur = 12;
   octx.fill();
   octx.restore();
 
   octx.fillStyle = '#e8e9f0';
   octx.font = 'bold 13px sans-serif';
+  octx.textAlign = 'center';
   octx.fillText(h.canvas_moon || 'Moon', moonX, moonY + moonR + 16, 80);
 }
 
@@ -393,8 +509,23 @@ function drawHorizon() {
   const H = horizonCanvas.height;
   const time = parseFloat(timeSlider.value);
   const eNorm = ((currentElong % 360) + 360) % 360;
-  const rad = (eNorm * Math.PI) / 180;
   const groundY = Math.min(230, H - 150);
+
+  let liveDetails = null;
+  if (horizonIsLiveToday) {
+    const nowDate = new Date();
+    const totalMin = Math.round(Math.max(0, Math.min(24, time)) * 60);
+    const refMoment = new Date(
+      nowDate.getFullYear(),
+      nowDate.getMonth(),
+      nowDate.getDate(),
+      0,
+      totalMin,
+      0,
+      0
+    );
+    liveDetails = getHorizonDayDetails(refMoment);
+  }
 
   hctx.clearRect(0, 0, W, H);
 
@@ -417,8 +548,10 @@ function drawHorizon() {
   hctx.fillStyle = skyGrad;
   hctx.fillRect(0, 0, W, groundY);
 
-  if (time < 6 || time > 18) {
-    hctx.fillStyle = `rgba(255,255,255,${0.6 * (time < 6 ? 1 - time / 6 : (time - 18) / 6)})`;
+  const isSunUp = liveDetails ? liveDetails.sunState.above : (time >= 6 && time <= 18);
+  if (!isSunUp) {
+    const nightAlpha = liveDetails ? 0.55 : 0.6 * (time < 6 ? 1 - time / 6 : (time - 18) / 6);
+    hctx.fillStyle = `rgba(255,255,255,${nightAlpha})`;
     for (let i = 0; i < 30; i++) {
       hctx.beginPath();
       hctx.arc((i * 61) % W, (i * 37) % (groundY - 14), (i % 2) * 0.8 + 0.5, 0, Math.PI * 2);
@@ -448,88 +581,64 @@ function drawHorizon() {
   hctx.restore();
 
   // Солнце
-  const sunTime = time;
-  const sunAngle = ((sunTime - 6) / 12) * Math.PI;
-  const sunX = W / 2 - Math.cos(sunAngle) * sunRx;
-  const sunY = groundY - Math.sin(sunAngle) * sunRy;
+  let drawSun = false;
+  let sunAngle = 0;
+  if (liveDetails) {
+    if (liveDetails.sunState.above) {
+      drawSun = true;
+      sunAngle = liveDetails.sunState.progress * Math.PI;
+    }
+  } else if (time >= 5.5 && time <= 18.5) {
+    sunAngle = ((time - 6) / 12) * Math.PI;
+    drawSun = true;
+  }
 
-  if (sunTime >= 5.5 && sunTime <= 18.5 && sunY < groundY + 12) {
-    const sunR = 28;
-    const sunG = hctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, sunR);
-    sunG.addColorStop(0, '#fff3c4');
-    sunG.addColorStop(0.5, '#ffd76a');
-    sunG.addColorStop(1, 'rgba(245, 183, 62, 0)');
-    hctx.fillStyle = sunG;
-    hctx.beginPath();
-    hctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
-    hctx.fill();
+  if (drawSun) {
+    const sunX = W / 2 - Math.cos(sunAngle) * sunRx;
+    const sunY = groundY - Math.sin(sunAngle) * sunRy;
+    if (sunY < groundY + 12) {
+      const sunR = 28;
+      const sunG = hctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, sunR);
+      sunG.addColorStop(0, '#fff3c4');
+      sunG.addColorStop(0.5, '#ffd76a');
+      sunG.addColorStop(1, 'rgba(245, 183, 62, 0)');
+      hctx.fillStyle = sunG;
+      hctx.beginPath();
+      hctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+      hctx.fill();
 
-    hctx.fillStyle = '#f5b73e';
-    hctx.beginPath();
-    hctx.arc(sunX, sunY, 13, 0, Math.PI * 2);
-    hctx.fill();
+      hctx.fillStyle = '#f5b73e';
+      hctx.beginPath();
+      hctx.arc(sunX, sunY, 13, 0, Math.PI * 2);
+      hctx.fill();
+    }
   }
 
   // Луна
-  let moonTime = time - (eNorm / 360) * 24;
-  if (moonTime < 0) moonTime += 24;
-  if (moonTime > 24) moonTime -= 24;
+  let moonAbove = false;
+  let moonAngle = 0;
+  if (liveDetails) {
+    if (liveDetails.moonState.above) {
+      moonAbove = true;
+      moonAngle = liveDetails.moonState.progress * Math.PI;
+    }
+  } else {
+    let moonTime = time - (eNorm / 360) * 24;
+    if (moonTime < 0) moonTime += 24;
+    if (moonTime > 24) moonTime -= 24;
+    moonAngle = ((moonTime - 6) / 12) * Math.PI;
+    if (Math.sin(moonAngle) > 0) {
+      moonAbove = true;
+    }
+  }
 
-  const moonAngle = ((moonTime - 6) / 12) * Math.PI;
-  const moonX = W / 2 - Math.cos(moonAngle) * moonRx;
-  const moonY = groundY - Math.sin(moonAngle) * moonRy;
   const moonR = 17;
-  const isStrictNew = eNorm <= 2 || eNorm >= 358;
   const isNearSun = eNorm <= 7 || eNorm >= 353;
 
-  if (moonY < groundY) {
-    hctx.save();
-    hctx.translate(moonX, moonY);
-    if (isNearSun) hctx.globalAlpha = 0.72;
-
-    hctx.fillStyle = '#1b1f30';
-    hctx.beginPath();
-    hctx.arc(0, 0, moonR, 0, Math.PI * 2);
-    hctx.fill();
-
-    if (isStrictNew) {
-      hctx.strokeStyle = '#6b7599';
-      hctx.lineWidth = 1.5;
-      hctx.setLineDash([3, 3]);
-      hctx.beginPath();
-      hctx.arc(0, 0, moonR, 0, Math.PI * 2);
-      hctx.stroke();
-      hctx.setLineDash([]);
-    } else {
-      hctx.beginPath();
-      const cosE = Math.cos(rad);
-      const rx = Math.abs(cosE) * moonR;
-
-      if (Math.abs(eNorm - 180) <= 2) {
-        hctx.arc(0, 0, moonR, 0, Math.PI * 2);
-      } else if (eNorm < 180) {
-        hctx.arc(0, 0, moonR, -Math.PI / 2, Math.PI / 2, false);
-        if (cosE > 0) {
-          hctx.ellipse(0, 0, rx, moonR, 0, Math.PI / 2, -Math.PI / 2, true);
-        } else {
-          hctx.ellipse(0, 0, rx, moonR, 0, Math.PI / 2, -Math.PI / 2, false);
-        }
-      } else {
-        hctx.arc(0, 0, moonR, Math.PI / 2, -Math.PI / 2, false);
-        if (cosE < 0) {
-          hctx.ellipse(0, 0, rx, moonR, 0, -Math.PI / 2, Math.PI / 2, false);
-        } else {
-          hctx.ellipse(0, 0, rx, moonR, 0, -Math.PI / 2, Math.PI / 2, true);
-        }
-      }
-      hctx.fillStyle = '#e8e6d8';
-      hctx.fill();
-
-      hctx.shadowColor = '#e8e6d8';
-      hctx.shadowBlur = 14;
-      hctx.fill();
-    }
-    hctx.restore();
+  if (moonAbove) {
+    const moonX = W / 2 - Math.cos(moonAngle) * moonRx;
+    const moonY = groundY - Math.sin(moonAngle) * moonRy;
+    drawEarthViewMoon(hctx, moonX, moonY, moonR, eNorm, { glow: 14, dimNearSun: true });
 
     hctx.fillStyle = isNearSun ? '#9aa0b5' : '#e8e9f0';
     hctx.font = '11.5px sans-serif';
@@ -547,11 +656,9 @@ function drawHorizon() {
   hctx.fillStyle = 'rgba(232, 233, 240, 0.85)';
   hctx.font = 'bold 18px monospace';
   hctx.textAlign = 'right';
-  const hh = Math.floor(time).toString().padStart(2, '0');
-  const mm = Math.floor((time % 1) * 60).toString().padStart(2, '0');
-  hctx.fillText(`${hh}:${mm}`, W - 16, 28);
+  hctx.fillText(formatSliderHour(time), W - 16, 28);
 
-  // Нижняя панель: горизонт, ориентировочные восход/кульминация/заход и 24ч шкала
+  // Нижняя панель: горизонт, восход/кульминация/заход и 24ч шкала
   hctx.fillStyle = '#0d111a';
   hctx.fillRect(0, groundY, W, H - groundY);
   hctx.strokeStyle = '#2a3152';
@@ -573,13 +680,23 @@ function drawHorizon() {
   const transitH = (12 + elongHours) % 24;
   const setH = (18 + elongHours) % 24;
 
+  const riseText = liveDetails
+    ? `${h.canvas_rise_exact_prefix || 'Rise '}${liveDetails.moonriseStr}`
+    : `${h.canvas_rise_prefix || 'Rise ~'}${formatApproxHour(riseH)}`;
+  const transitText = liveDetails
+    ? `${h.canvas_culmination_exact_prefix || 'South '}${liveDetails.moonTransitStr}`
+    : `${h.canvas_culmination_prefix || 'South ~'}${formatApproxHour(transitH)}`;
+  const setText = liveDetails
+    ? `${h.canvas_set_exact_prefix || 'Set '}${liveDetails.moonsetStr}`
+    : `${h.canvas_set_prefix || 'Set ~'}${formatApproxHour(setH)}`;
+
   hctx.font = 'bold 11.5px sans-serif';
   hctx.fillStyle = '#f5a47f';
-  hctx.fillText(`${h.canvas_rise_prefix || 'Rise ~'}${formatApproxHour(riseH)}`, 86, groundY + 42, 145);
+  hctx.fillText(riseText, 86, groundY + 42, 145);
   hctx.fillStyle = '#7f9cf5';
-  hctx.fillText(`${h.canvas_culmination_prefix || 'South ~'}${formatApproxHour(transitH)}`, W / 2, groundY + 42, 145);
+  hctx.fillText(transitText, W / 2, groundY + 42, 145);
   hctx.fillStyle = '#9aa0b5';
-  hctx.fillText(`${h.canvas_set_prefix || 'Set ~'}${formatApproxHour(setH)}`, W - 86, groundY + 42, 145);
+  hctx.fillText(setText, W - 86, groundY + 42, 145);
 
   // 24-часовая лента видимости над горизонтом
   const tlX = 64;
@@ -592,7 +709,16 @@ function drawHorizon() {
   hctx.fillStyle = '#6b7190';
   hctx.font = '10.5px sans-serif';
   hctx.textAlign = 'left';
-  hctx.fillText(h.canvas_timeline_24h || 'Above horizon (24h)', tlX, tlTop + 2, tlW);
+  hctx.fillText(h.canvas_timeline_24h || 'Above horizon (24h)', tlX, tlTop + 2, tlW - 95);
+
+  hctx.textAlign = 'right';
+  hctx.fillStyle = liveDetails ? '#7fd1ae' : '#f5a47f';
+  hctx.fillText(
+    liveDetails ? (h.horizon_live_mode || 'Live (today)') : (h.horizon_model_mode || 'Model ~'),
+    tlX + tlW,
+    tlTop + 2,
+    95
+  );
 
   // Метки строк шкалы
   hctx.font = '10.5px sans-serif';
@@ -607,13 +733,23 @@ function drawHorizon() {
   hctx.fillRect(tlX, sunBarY, tlW, barH);
   hctx.fillRect(tlX, moonBarY, tlW, barH);
 
-  // Полоса Солнца (06:00 - 18:00)
+  // Полоса Солнца
   hctx.fillStyle = 'rgba(245, 183, 62, 0.72)';
-  hctx.fillRect(tlX + (6 / 24) * tlW, sunBarY + 2, (12 / 24) * tlW, barH - 4);
+  if (liveDetails) {
+    for (const [s, e] of liveDetails.sunSegments) {
+      hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 2, ((e - s) / 24) * tlW, barH - 4);
+    }
+  } else {
+    hctx.fillRect(tlX + (6 / 24) * tlW, sunBarY + 2, (12 / 24) * tlW, barH - 4);
+  }
 
-  // Полоса Луны ([riseH .. setH], с переносом через полночь)
+  // Полоса Луны
   hctx.fillStyle = isNearSun ? 'rgba(139, 145, 168, 0.45)' : 'rgba(127, 156, 245, 0.85)';
-  if (riseH < setH) {
+  if (liveDetails) {
+    for (const [s, e] of liveDetails.moonSegments) {
+      hctx.fillRect(tlX + (s / 24) * tlW, moonBarY + 2, ((e - s) / 24) * tlW, barH - 4);
+    }
+  } else if (riseH < setH) {
     hctx.fillRect(tlX + (riseH / 24) * tlW, moonBarY + 2, ((setH - riseH) / 24) * tlW, barH - 4);
   } else {
     hctx.fillRect(tlX + (riseH / 24) * tlW, moonBarY + 2, ((24 - riseH) / 24) * tlW, barH - 4);
@@ -665,7 +801,7 @@ function drawLunarDays(day) {
 
   let startDay = day - 1;
   if (startDay < 1) startDay = 1;
-  if (startDay > 27) startDay = 27;
+  if (startDay > 28) startDay = 28;
   const showCount = 3;
   const colW = W / showCount;
 
@@ -1073,9 +1209,15 @@ function applyDictionaryLocalization() {
 
   const horizonObsEl = document.getElementById('horizonObserverInfo');
   if (horizonObsEl && todaySummary) {
-    const riseStr = todaySummary.moonriseStr || '--:--';
-    const setStr = todaySummary.moonsetStr || '--:--';
-    horizonObsEl.textContent = `${h.horizon_today_prefix || 'Today'} (${coordTag}): ${h.horizon_rise_word || 'rise'} ${riseStr}, ${h.horizon_set_word || 'set'} ${setStr}.`;
+    const liveDetails = getHorizonDayDetails(now);
+    const moonWord = h.canvas_moon || 'Moon';
+    const sunWord = h.horizon_sun_label || 'Sun';
+    const riseW = h.horizon_rise_word || 'rise';
+    const setW = h.horizon_set_word || 'set';
+    horizonObsEl.textContent =
+      `${h.horizon_today_prefix || 'Today'} (${coordTag}): ` +
+      `${moonWord} — ${riseW} ${liveDetails.moonriseStr}, ${setW} ${liveDetails.moonsetStr}; ` +
+      `${sunWord} — ${riseW} ${liveDetails.sunriseStr}, ${setW} ${liveDetails.sunsetStr}.`;
   }
 
   const personalNoteEl = document.getElementById('personalContextNote');
@@ -1150,6 +1292,11 @@ async function loadCustomDictOverride() {
 (function init() {
   const now = new Date();
   const nowInfo = getMoonPhaseInfo(now);
+  const todaySummary = getCalendarDayLunarSummary(now, now);
+  const currentLunarDay = Math.max(
+    1,
+    Math.min(30, (todaySummary && todaySummary.activeLunarDay) || Math.round(nowInfo.moonAge) || 1)
+  );
   const antiphaseMoonAge = (ctx.birthMoonAge + SYNODIC_MONTH / 2) % SYNODIC_MONTH;
 
   if (ctx.birthISO) {
@@ -1161,10 +1308,16 @@ async function loadCustomDictOverride() {
   birthASlider.value = Math.min(29.5, Math.max(0, ctx.birthMoonAge)).toFixed(1);
   birthBSlider.value = Math.min(29.5, Math.max(0, antiphaseMoonAge)).toFixed(1);
 
+  horizonIsLiveToday = true;
+  setTimeSliderHour(now.getHours() + now.getMinutes() / 60);
+
+  daySlider.value = String(currentLunarDay);
+  dayVal.textContent = String(currentLunarDay);
+
   applyDictionaryLocalization();
   updateUI(nowInfo.elong, false);
   drawPersonal();
-  drawLunarDays(Math.max(1, Math.min(29, Math.round(nowInfo.moonAge) || 1)));
+  drawLunarDays(currentLunarDay);
 
   void loadCustomDictOverride();
 })();

@@ -93,9 +93,40 @@
   }
   .phase-info-head {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .phase-info-head-text {
+    display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .phase-earth-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    padding: 4px 6px;
+    border-radius: 10px;
+    background: #0d1122;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .phase-earth-view canvas {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: transparent;
+  }
+  .phase-earth-caption {
+    font-size: 10px;
+    line-height: 1.15;
+    color: var(--dim);
+    white-space: nowrap;
   }
   .phase-info-title {
     font-weight: 700;
@@ -401,8 +432,14 @@
 
       <div class="phase-info-panel">
         <div class="phase-info-head">
-          <div class="phase-info-title" id="phName">—</div>
-          <div class="phase-info-sky" id="phSky">—</div>
+          <div class="phase-info-head-text">
+            <div class="phase-info-title" id="phName">—</div>
+            <div class="phase-info-sky" id="phSky">—</div>
+          </div>
+          <div class="phase-earth-view">
+            <canvas id="orbitalEarthViewCanvas" width="88" height="88" aria-hidden="true"></canvas>
+            <span class="phase-earth-caption" data-i18n="label_earth_view">Вид с Земли</span>
+          </div>
         </div>
         <div class="phase-info-metrics">
           <div class="phase-metric-row">
@@ -466,7 +503,7 @@
 
       <div class="ctrl-group">
         <div class="ctrl-label"><span data-i18n="label_cycle_day">День цикла (от новолуния)</span><span id="dayVal">1</span></div>
-        <input type="range" id="daySlider" min="1" max="29" step="1" value="1">
+        <input type="range" id="daySlider" min="1" max="30" step="1" value="1">
       </div>
 
       <p class="mini" data-i18n="days_hint">Сдвиньте ползунок к 22–23 дню, чтобы увидеть, как восход «перескакивает» через полночь. В такие моменты в одни календарные сутки может не быть ни одного восхода, либо их будет два.</p>

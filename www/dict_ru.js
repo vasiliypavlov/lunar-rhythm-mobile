@@ -2,7 +2,7 @@ export const DICT_RU = {
   "meta": {
     "id": "base_default_ru",
     "lang": "ru-RU",
-    "name": "Базовый профиль (Расширенный v2.0)",
+    "name": "Базовый профиль",
     "version": "2.0.0",
     "author": "System Core",
     "description": "Расширенный словарь продуктивности, ритмов активности и ежедневных сценариев без метафор и эзотерики.",
@@ -586,7 +586,7 @@ export const DICT_RU = {
     "slot_morning_title": "🌅 Утро",
     "slot_day_title": "☀️ День",
     "slot_evening_title": "🌙 Вечер",
-    "settings_rhythm_title": "Персональный ритм (Состояние Б)",
+    "settings_rhythm_title": "Персональный ритм",
     "settings_rhythm_desc": "Без даты рождения приложение работает как точный лунный календарь. Укажите дату рождения для расчёта личных фаз и графа аспектов.",
     "label_birth_date": "Дата рождения",
     "placeholder_birth_date": "дд.мм.гггг",
@@ -744,6 +744,14 @@ export const DICT_RU = {
     "canvas_moon_hidden": "Луна (не видна)",
     "canvas_culmination_prefix": "Юг ~",
     "canvas_set_prefix": "Заход ~",
-    "canvas_timeline_24h": "Над горизонтом (24 ч)"
+    "canvas_timeline_24h": "Над горизонтом (24 ч)",
+    "label_earth_view": "Вид с Земли",
+    "canvas_rise_exact_prefix": "Восход ",
+    "canvas_culmination_exact_prefix": "Юг ",
+    "canvas_set_exact_prefix": "Заход ",
+    "canvas_sun_below": "Солнце под горизонтом",
+    "horizon_live_mode": "Факт (сегодня)",
+    "horizon_model_mode": "Модель ~",
+    "horizon_sun_label": "Солнце"
   }
 };

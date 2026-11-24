@@ -2,7 +2,7 @@ export const DICT_EN = {
   "meta": {
     "id": "base_default_en",
     "lang": "en-US",
-    "name": "Default Profile (Extended v2.0)",
+    "name": "Default Profile",
     "version": "2.0.0",
     "author": "System Core",
     "description": "Extended productivity, activity pacing, and daily scenario dictionary without metaphors or esotericism.",
@@ -586,7 +586,7 @@ export const DICT_EN = {
     "slot_morning_title": "🌅 Morning",
     "slot_day_title": "☀️ Day",
     "slot_evening_title": "🌙 Evening",
-    "settings_rhythm_title": "Personal Rhythm (State B)",
+    "settings_rhythm_title": "Personal Rhythm",
     "settings_rhythm_desc": "Without a birth date, the app runs as a precise lunar calendar. Add your birth date to compute personal phases and the aspect graph.",
     "label_birth_date": "Birth date",
     "placeholder_birth_date": "dd.mm.yyyy",
@@ -744,6 +744,14 @@ export const DICT_EN = {
     "canvas_moon_hidden": "Moon (hidden)",
     "canvas_culmination_prefix": "South ~",
     "canvas_set_prefix": "Set ~",
-    "canvas_timeline_24h": "Above horizon (24h)"
+    "canvas_timeline_24h": "Above horizon (24h)",
+    "label_earth_view": "Earth view",
+    "canvas_rise_exact_prefix": "Rise ",
+    "canvas_culmination_exact_prefix": "South ",
+    "canvas_set_exact_prefix": "Set ",
+    "canvas_sun_below": "Sun below horizon",
+    "horizon_live_mode": "Live (today)",
+    "horizon_model_mode": "Model ~",
+    "horizon_sun_label": "Sun"
   }
 };

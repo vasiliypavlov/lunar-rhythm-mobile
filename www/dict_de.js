@@ -2,7 +2,7 @@ export const DICT_DE = {
   "meta": {
     "id": "base_default_de",
     "lang": "de-DE",
-    "name": "Basisprofil (Erweitert v2.0)",
+    "name": "Basisprofil",
     "version": "2.0.0",
     "author": "System Core",
     "description": "Erweitertes Wörterbuch für Produktivität, Aktivitätsrhythmen und Alltagsszenarien ohne Metaphern oder Esoterik.",
@@ -586,7 +586,7 @@ export const DICT_DE = {
     "slot_morning_title": "🌅 Morgen",
     "slot_day_title": "☀️ Tag",
     "slot_evening_title": "🌙 Abend",
-    "settings_rhythm_title": "Persönlicher Rhythmus (Zustand B)",
+    "settings_rhythm_title": "Persönlicher Rhythmus",
     "settings_rhythm_desc": "Ohne Geburtsdatum arbeitet die App als präziser Mondkalender. Geben Sie Ihr Geburtsdatum für persönliche Phasen und Aspekte ein.",
     "label_birth_date": "Geburtsdatum",
     "placeholder_birth_date": "TT.MM.JJJJ",
@@ -744,6 +744,14 @@ export const DICT_DE = {
     "canvas_moon_hidden": "Mond (unsichtbar)",
     "canvas_culmination_prefix": "Süd ~",
     "canvas_set_prefix": "Unterg. ~",
-    "canvas_timeline_24h": "Über Horizont (24 Std.)"
+    "canvas_timeline_24h": "Über Horizont (24 Std.)",
+    "label_earth_view": "Erdansicht",
+    "canvas_rise_exact_prefix": "Aufg. ",
+    "canvas_culmination_exact_prefix": "Süd ",
+    "canvas_set_exact_prefix": "Unterg. ",
+    "canvas_sun_below": "Sonne unter Horizont",
+    "horizon_live_mode": "Live (heute)",
+    "horizon_model_mode": "Modell ~",
+    "horizon_sun_label": "Sonne"
   }
 };

@@ -2,7 +2,7 @@ export const DICT_FR = {
   "meta": {
     "id": "base_default_fr",
     "lang": "fr-FR",
-    "name": "Profil de Base (Étendu v2.0)",
+    "name": "Profil de Base",
     "version": "2.0.0",
     "author": "System Core",
     "description": "Dictionnaire étendu de productivité, de rythmes d'activité et de scénarios quotidiens sans métaphores ni ésotérisme.",
@@ -586,7 +586,7 @@ export const DICT_FR = {
     "slot_morning_title": "🌅 Matin",
     "slot_day_title": "☀️ Jour",
     "slot_evening_title": "🌙 Soir",
-    "settings_rhythm_title": "Rythme Personnel (État B)",
+    "settings_rhythm_title": "Rythme Personnel",
     "settings_rhythm_desc": "Sans date de naissance, l'extension agit comme un calendrier lunaire précis. Indiquez votre date de naissance pour calculer vos phases et aspects.",
     "label_birth_date": "Date de naissance",
     "placeholder_birth_date": "jj.mm.aaaa",
@@ -744,6 +744,14 @@ export const DICT_FR = {
     "canvas_moon_hidden": "Lune (cachée)",
     "canvas_culmination_prefix": "Sud ~",
     "canvas_set_prefix": "Couch. ~",
-    "canvas_timeline_24h": "Sur l’horizon (24 h)"
+    "canvas_timeline_24h": "Sur l’horizon (24 h)",
+    "label_earth_view": "Vue terrestre",
+    "canvas_rise_exact_prefix": "Lev. ",
+    "canvas_culmination_exact_prefix": "Sud ",
+    "canvas_set_exact_prefix": "Couch. ",
+    "canvas_sun_below": "Soleil sous l’horizon",
+    "horizon_live_mode": "Réel (auj.)",
+    "horizon_model_mode": "Modèle ~",
+    "horizon_sun_label": "Soleil"
   }
 };

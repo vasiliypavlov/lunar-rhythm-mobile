@@ -558,6 +558,30 @@ export function findNewMoonBefore(jd) {
   return nm;
 }
 
+function getSunEquatorial(jd) {
+  const sun = getSunPosition(jd);
+  const T = (jd - J2000) / 36525;
+  const eps = 23.439291 - 0.0130042 * T;
+  const raRad = Math.atan2(sinD(sun.lon) * cosD(eps), cosD(sun.lon));
+  const decDeg = Math.asin(Math.max(-1, Math.min(1, sinD(eps) * sinD(sun.lon)))) * RAD2DEG;
+  return {
+    ra: norm360(raRad * RAD2DEG),
+    dec: decDeg
+  };
+}
+
+function getSunAltitudeDeg(jd, latDeg, lonDeg) {
+  const sunEq = getSunEquatorial(jd);
+  const T = (jd - J2000) / 36525;
+  const d = jd - J2000;
+  const gmst = norm360(280.46061837 + 360.98564736629 * d + 0.000387933 * T * T);
+  const lst = norm360(gmst + lonDeg);
+  const H = norm360(lst - sunEq.ra);
+  const sinAlt = sinD(latDeg) * sinD(sunEq.dec) + cosD(latDeg) * cosD(sunEq.dec) * cosD(H);
+  const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * RAD2DEG;
+  return alt - (-0.8333);
+}
+
 function getMoonAltitudeDeg(jd, latDeg, lonDeg) {
   const moon = getMoonPosition(jd);
   const T = (jd - J2000) / 36525;
@@ -573,22 +597,22 @@ function getMoonAltitudeDeg(jd, latDeg, lonDeg) {
   return alt - h0;
 }
 
-function findMoonHorizonEventsBetween(jdStart, jdEnd, latDeg, lonDeg) {
+function findHorizonEventsForFn(altFn, jdStart, jdEnd, latDeg, lonDeg) {
   const rises = [];
   const sets = [];
   const step = 1 / 48; // 30 minutes
   let prevT = jdStart;
-  let prevH = getMoonAltitudeDeg(prevT, latDeg, lonDeg);
+  let prevH = altFn(prevT, latDeg, lonDeg);
 
   for (let t = jdStart + step; t <= jdEnd + step; t += step) {
     const clampedT = Math.min(t, jdEnd);
-    const curH = getMoonAltitudeDeg(clampedT, latDeg, lonDeg);
+    const curH = altFn(clampedT, latDeg, lonDeg);
     if (prevH <= 0 && curH > 0) {
       let lo = prevT;
       let hi = clampedT;
       for (let i = 0; i < 16; i++) {
         const mid = (lo + hi) * 0.5;
-        if (getMoonAltitudeDeg(mid, latDeg, lonDeg) <= 0) lo = mid;
+        if (altFn(mid, latDeg, lonDeg) <= 0) lo = mid;
         else hi = mid;
       }
       const riseJD = (lo + hi) * 0.5;
@@ -600,7 +624,7 @@ function findMoonHorizonEventsBetween(jdStart, jdEnd, latDeg, lonDeg) {
       let hi = clampedT;
       for (let i = 0; i < 16; i++) {
         const mid = (lo + hi) * 0.5;
-        if (getMoonAltitudeDeg(mid, latDeg, lonDeg) >= 0) lo = mid;
+        if (altFn(mid, latDeg, lonDeg) >= 0) lo = mid;
         else hi = mid;
       }
       const setJD = (lo + hi) * 0.5;
@@ -615,8 +639,115 @@ function findMoonHorizonEventsBetween(jdStart, jdEnd, latDeg, lonDeg) {
   return { rises, sets };
 }
 
+function findMoonHorizonEventsBetween(jdStart, jdEnd, latDeg, lonDeg) {
+  return findHorizonEventsForFn(getMoonAltitudeDeg, jdStart, jdEnd, latDeg, lonDeg);
+}
+
 function findMoonrisesBetween(jdStart, jdEnd, latDeg, lonDeg) {
   return findMoonHorizonEventsBetween(jdStart, jdEnd, latDeg, lonDeg).rises;
+}
+
+function findUpperTransitsBetween(raFn, jdStart, jdEnd, lonDeg) {
+  const getHA = (jd) => {
+    const T = (jd - J2000) / 36525;
+    const d = jd - J2000;
+    const gmst = norm360(280.46061837 + 360.98564736629 * d + 0.000387933 * T * T);
+    const lst = norm360(gmst + lonDeg);
+    return signedAngleDiff(lst, raFn(jd));
+  };
+  const transits = [];
+  const step = 1 / 48;
+  let prevT = jdStart;
+  let prevHA = getHA(prevT);
+  for (let t = jdStart + step; t <= jdEnd + step; t += step) {
+    const clampedT = Math.min(t, jdEnd);
+    const curHA = getHA(clampedT);
+    if (prevHA <= 0 && curHA > 0 && Math.abs(curHA - prevHA) < 90) {
+      let lo = prevT;
+      let hi = clampedT;
+      for (let i = 0; i < 16; i++) {
+        const mid = (lo + hi) * 0.5;
+        if (getHA(mid) <= 0) lo = mid;
+        else hi = mid;
+      }
+      const trJD = (lo + hi) * 0.5;
+      if (trJD > jdStart + 0.0007 && trJD < jdEnd - 0.0007) {
+        transits.push(trJD);
+      }
+    }
+    prevT = clampedT;
+    prevHA = curHA;
+    if (clampedT >= jdEnd) break;
+  }
+  return transits;
+}
+
+function buildHorizonSegments(rises, sets, dayStartMs, startsAbove) {
+  const events = [
+    ...rises.map(jd => ({ h: (fromJulianDay(jd).getTime() - dayStartMs) / 3600000, type: 'rise' })),
+    ...sets.map(jd => ({ h: (fromJulianDay(jd).getTime() - dayStartMs) / 3600000, type: 'set' }))
+  ].sort((a, b) => a.h - b.h);
+  const segs = [];
+  let above = startsAbove;
+  let curStart = 0;
+  for (const ev of events) {
+    const h = Math.max(0, Math.min(24, ev.h));
+    if (ev.type === 'set' && above) {
+      segs.push([curStart, h]);
+      above = false;
+    } else if (ev.type === 'rise' && !above) {
+      curStart = h;
+      above = true;
+    }
+  }
+  if (above) segs.push([curStart, 24]);
+  return segs;
+}
+
+function computeBodyArcProgress(altFn, refJD, latDeg, lonDeg) {
+  if (altFn(refJD, latDeg, lonDeg) <= 0) {
+    return { above: false, progress: null };
+  }
+  const win = findHorizonEventsForFn(altFn, refJD - 1.5, refJD + 1.5, latDeg, lonDeg);
+  const prevRise = win.rises.filter(j => j <= refJD).pop();
+  const nextSet = win.sets.find(j => j >= refJD);
+  if (prevRise !== undefined && nextSet !== undefined && nextSet > prevRise) {
+    const p = (refJD - prevRise) / (nextSet - prevRise);
+    return { above: true, progress: Math.max(0.01, Math.min(0.99, p)) };
+  }
+  return { above: true, progress: 0.5 };
+}
+
+export function getHorizonDayDetails(referenceMoment = new Date()) {
+  const ref = referenceMoment instanceof Date ? referenceMoment : new Date(referenceMoment);
+  const dayStart = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0, 0, 0, 0);
+  const dayEnd = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 23, 59, 59, 999);
+  const startJD = toJulianDay(dayStart);
+  const endJD = toJulianDay(dayEnd);
+  const refJD = toJulianDay(ref);
+  const dayStartMs = dayStart.getTime();
+  const { latDeg, lonDeg } = getObserverCoords();
+
+  const sunEvents = findHorizonEventsForFn(getSunAltitudeDeg, startJD, endJD, latDeg, lonDeg);
+  const moonEvents = findHorizonEventsForFn(getMoonAltitudeDeg, startJD, endJD, latDeg, lonDeg);
+  const sunTransits = findUpperTransitsBetween(jd => getSunEquatorial(jd).ra, startJD, endJD, lonDeg);
+  const moonTransits = findUpperTransitsBetween(jd => getMoonPosition(jd).ra, startJD, endJD, lonDeg);
+
+  const sunStartsAbove = getSunAltitudeDeg(startJD, latDeg, lonDeg) > 0;
+  const moonStartsAbove = getMoonAltitudeDeg(startJD, latDeg, lonDeg) > 0;
+
+  return {
+    sunriseStr: sunEvents.rises.length ? formatHM(fromJulianDay(sunEvents.rises[0])) : '--:--',
+    sunsetStr: sunEvents.sets.length ? formatHM(fromJulianDay(sunEvents.sets[0])) : '--:--',
+    sunTransitStr: sunTransits.length ? formatHM(fromJulianDay(sunTransits[0])) : '--:--',
+    moonriseStr: moonEvents.rises.length ? formatHM(fromJulianDay(moonEvents.rises[0])) : '--:--',
+    moonsetStr: moonEvents.sets.length ? formatHM(fromJulianDay(moonEvents.sets[0])) : '--:--',
+    moonTransitStr: moonTransits.length ? formatHM(fromJulianDay(moonTransits[0])) : '--:--',
+    sunSegments: buildHorizonSegments(sunEvents.rises, sunEvents.sets, dayStartMs, sunStartsAbove),
+    moonSegments: buildHorizonSegments(moonEvents.rises, moonEvents.sets, dayStartMs, moonStartsAbove),
+    sunState: computeBodyArcProgress(getSunAltitudeDeg, refJD, latDeg, lonDeg),
+    moonState: computeBodyArcProgress(getMoonAltitudeDeg, refJD, latDeg, lonDeg)
+  };
 }
 
 export function getLunationIntervals(jd) {
