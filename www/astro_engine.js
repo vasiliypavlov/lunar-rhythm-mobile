@@ -597,7 +597,58 @@ function getMoonAltitudeDeg(jd, latDeg, lonDeg) {
   return alt - h0;
 }
 
-function findHorizonEventsForFn(altFn, jdStart, jdEnd, latDeg, lonDeg) {
+/**
+ * Положение светила в горизонтальной системе координат для наблюдателя.
+ * body: 'sun' | 'moon'.
+ * Возвращает прямое восхождение, склонение, геометрическую высоту (без
+ * рефракции) и видимую высоту (с рефракцией и полудиаметром — так же, как
+ * считаются восходы/заходы), азимут от северного меридиана и часовой угол.
+ */
+export function getBodySkyPosition(jd, body = 'moon', latDeg = null, lonDeg = null) {
+  const coords = getObserverCoords();
+  const lat = latDeg === null || latDeg === undefined ? coords.latDeg : latDeg;
+  const lon = lonDeg === null || lonDeg === undefined ? coords.lonDeg : lonDeg;
+  const isSun = body === 'sun';
+
+  const T = (jd - J2000) / 36525;
+  const d = jd - J2000;
+  const gmst = norm360(280.46061837 + 360.98564736629 * d + 0.000387933 * T * T);
+  const lst = norm360(gmst + lon);
+
+  const eq = isSun ? getSunEquatorial(jd) : getMoonPosition(jd);
+  const H = norm360(lst - eq.ra);
+  const sinAlt = sinD(lat) * sinD(eq.dec) + cosD(lat) * cosD(eq.dec) * cosD(H);
+  const geoAltDeg = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * RAD2DEG;
+  const cosAlt = Math.cos(geoAltDeg * DEG2RAD);
+
+  let azDeg = 0;
+  if (Math.abs(cosAlt) > 1e-9) {
+    const sinA = (-cosD(eq.dec) * sinD(H)) / cosAlt;
+    const cosA = (sinD(eq.dec) - sinD(lat) * Math.sin(geoAltDeg * DEG2RAD)) / (cosD(lat) * cosAlt);
+    azDeg = norm360(Math.atan2(sinA, cosA) * RAD2DEG);
+  }
+
+  let altDeg = geoAltDeg;
+  if (isSun) {
+    altDeg = geoAltDeg + 0.8333;
+  } else {
+    const parallax = Math.asin(6378.14 / eq.distKm) * RAD2DEG;
+    altDeg = geoAltDeg - (parallax - 0.5667 - 0.25);
+  }
+
+  return {
+    body: isSun ? 'sun' : 'moon',
+    ra: eq.ra,
+    dec: eq.dec,
+    geoAltDeg,
+    altDeg,
+    azDeg,
+    hourAngleDeg: H,
+    distKm: isSun ? null : eq.distKm
+  };
+}
+
+export function findHorizonEventsForFn(altFn, jdStart, jdEnd, latDeg, lonDeg) {
   const rises = [];
   const sets = [];
   const step = 1 / 48; // 30 minutes

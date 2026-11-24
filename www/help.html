@@ -189,6 +189,14 @@
     background: radial-gradient(circle at 35% 35%, #f5f3e6, #b9b6a2); cursor: pointer;
   }
 
+  input[type="date"] {
+    width: 100%; min-height: 44px; padding: 10px 12px;
+    border-radius: 12px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text);
+    font-size: 13px; font-family: inherit; color-scheme: dark;
+  }
+  input[type="date"]:focus { outline: 1px solid #7f9cf5; }
+
   .btn-row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
   .btn {
     flex: 1 1 auto; min-height: 44px; padding: 10px 12px; border-radius: 12px;
@@ -483,7 +491,20 @@
         <input type="range" id="phaseSliderHorizon" min="0" max="360" step="1" value="0">
       </div>
 
-      <p id="horizonObserverInfo" class="mini" style="margin-bottom:10px"></p>
+      <p class="mini" data-i18n="horizon_phase_hint">Ползунок фазы выбирает ближайшую дату с такой элонгацией: небо всегда показано фактически, усреднённой модели здесь нет.</p>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label"><span data-i18n="horizon_date_label">Дата наблюдения</span><span id="horizonDateVal">—</span></div>
+        <input type="date" id="horizonDateInput">
+      </div>
+
+      <p id="horizonObserverInfo" class="mini" style="margin-bottom:8px"></p>
+      <p id="horizonNextEvent" class="mini" style="margin-bottom:6px"></p>
+      <p id="horizonLunarLink" class="mini" style="margin-bottom:6px"></p>
+
+      <p class="mini" data-i18n="horizon_drift_title">Сдвиг восхода Луны по дням, мин/сутки</p>
+      <canvas id="horizonDriftCanvas" width="500" height="120"></canvas>
+      <p id="horizonDriftNote" class="mini" style="margin-bottom:8px"></p>
 
       <div class="tip" id="horizonTip" data-i18n="horizon_tip">
         Луна восходит и заходит каждый день, но время меняется. При элонгации 0° (новолуние) она восходит вместе с Солнцем и не видна. При 180° (полнолуние) — восходит на закате.
@@ -499,14 +520,22 @@
     </div>
 
     <div class="card" style="padding-bottom:10px">
-      <canvas id="lunarDayCanvas" width="500" height="240"></canvas>
+      <canvas id="lunarDayCanvas" width="500" height="320"></canvas>
 
       <div class="ctrl-group">
         <div class="ctrl-label"><span data-i18n="label_cycle_day">День цикла (от новолуния)</span><span id="dayVal">1</span></div>
         <input type="range" id="daySlider" min="1" max="30" step="1" value="1">
       </div>
 
-      <p class="mini" data-i18n="days_hint">Сдвиньте ползунок к 22–23 дню, чтобы увидеть, как восход «перескакивает» через полночь. В такие моменты в одни календарные сутки может не быть ни одного восхода, либо их будет два.</p>
+      <div class="btn-row">
+        <button type="button" class="btn" id="daysTodayBtn" data-i18n="btn_today">Сегодня</button>
+      </div>
+
+      <p id="lunarDaySummary" class="mini"></p>
+      <p id="lunarDayToday" class="mini"></p>
+      <p id="lunarDayExplain" class="mini"></p>
+
+      <p class="mini" data-i18n="days_hint">Полоса — лунные сутки от восхода до восхода, точка — восход. Внизу — календарная ось: видно, в какие календарные сутки восхода нет вовсе или их два.</p>
     </div>
   </section>
 

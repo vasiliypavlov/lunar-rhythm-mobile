@@ -6,7 +6,15 @@ import {
   getObserverCoords,
   parseObserverCoord,
   setObserverCoords,
-  parseBirthDateString
+  parseBirthDateString,
+  getBodySkyPosition,
+  findHorizonEventsForFn,
+  getLunationIntervals,
+  getLunarDayAt,
+  getMoonPosition,
+  getSunPosition,
+  toJulianDay,
+  fromJulianDay
 } from './astro_engine.js';
 import {
   BUILTIN_DICTIONARIES,
@@ -134,7 +142,7 @@ tabs.forEach(tabBtn => {
 });
 
 let currentElong = 0;
-let horizonIsLiveToday = true;
+let horizonDate = new Date();
 let isPlaying = false;
 let animFrame = null;
 let lastTime = 0;
@@ -162,7 +170,8 @@ function formatSliderHour(hr) {
 function setTimeSliderHour(hr) {
   const clamped = Math.max(0, Math.min(24, Number(hr) || 0));
   timeSlider.value = clamped.toFixed(1);
-  timeVal.textContent = formatSliderHour(clamped);
+  // Метка — по фактическому значению ползунка (шаг 0.1 ч), иначе расхождение в минуты.
+  timeVal.textContent = formatSliderHour(Math.round(clamped * 10) / 10);
 }
 
 function drawEarthViewMoon(ctx2d, cx, cy, moonR, elongDeg, opts = {}) {
@@ -239,11 +248,9 @@ function updateUI(E, isSlider) {
   currentElong = Math.max(0, Math.min(360, E));
   if (!isSlider) {
     elongSlider.value = currentElong;
-    phaseSliderHorizon.value = currentElong;
   }
   const normElong = ((currentElong % 360) + 360) % 360;
   elongVal.textContent = Math.round(currentElong) + '°';
-  phaseValHorizon.textContent = Math.round(currentElong) + '°';
 
   const idx = getPhaseIndex(normElong);
   const def = PHASE_DEFS[idx];
@@ -278,34 +285,44 @@ function updateUI(E, isSlider) {
 
 elongSlider.addEventListener('input', (e) => {
   stopAnim();
-  horizonIsLiveToday = false;
   updateUI(+e.target.value, true);
-  phaseSliderHorizon.value = currentElong;
 });
+// Ползунок фазы в разделе «Восход и заход» выбирает реальную дату:
+// модельной «усреднённой» картинки больше нет (задание В1).
 phaseSliderHorizon.addEventListener('input', (e) => {
   stopAnim();
-  horizonIsLiveToday = false;
-  updateUI(+e.target.value, true);
-  elongSlider.value = currentElong;
+  const target = +e.target.value;
+  setHorizonDate(findDateForElongation(target, horizonDate));
 });
 timeSlider.addEventListener('input', (e) => {
   const hr = parseFloat(e.target.value);
   timeVal.textContent = formatSliderHour(hr);
   drawHorizon();
+  updateHorizonPanels();
 });
+
+const horizonDateInput = document.getElementById('horizonDateInput');
+if (horizonDateInput) {
+  horizonDateInput.addEventListener('change', () => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(horizonDateInput.value || '').trim());
+    if (!m) return;
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    if (Number.isNaN(d.getTime())) return;
+    setHorizonDate(d);
+  });
+}
 
 todayBtn.addEventListener('click', () => {
   stopAnim();
-  horizonIsLiveToday = true;
   const now = new Date();
-  const nowInfo = getMoonPhaseInfo(now);
+  setHorizonDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   setTimeSliderHour(now.getHours() + now.getMinutes() / 60);
-  updateUI(nowInfo.elong, false);
+  updateHorizonPanels();
+  drawHorizon();
 });
 
 function startAnim() {
   isPlaying = true;
-  horizonIsLiveToday = false;
   cycleBtn.textContent = hDict().btn_pause || '⏸ Pause';
   lastTime = performance.now();
   const loop = (ts) => {
@@ -481,184 +498,357 @@ function lerpColor(c1, c2, p) {
 }
 function rgbStr(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
 
-const skyKeys = [
-  { t: 0, top: [5, 8, 20], bot: [16, 21, 48] },
-  { t: 5, top: [5, 8, 20], bot: [16, 21, 48] },
-  { t: 7, top: [40, 40, 80], bot: [120, 80, 100] },
-  { t: 9, top: [26, 43, 94], bot: [74, 111, 165] },
-  { t: 17, top: [26, 43, 94], bot: [74, 111, 165] },
-  { t: 19, top: [50, 30, 60], bot: [180, 80, 60] },
-  { t: 21, top: [5, 8, 20], bot: [16, 21, 48] },
-  { t: 24, top: [5, 8, 20], bot: [16, 21, 48] }
+/* ═══════════ РЕАЛЬНЫЕ ДАННЫЕ: утилиты ═══════════ */
+const MS_PER_MIN = 60000;
+
+function dayKeyOf(date) {
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+function startOfLocalDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+}
+
+function formatDateShort(date) {
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  return `${dd}.${mm}`;
+}
+
+function formatClock(date) {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function formatClockJD(jd) {
+  return jd === null || jd === undefined ? '--:--' : formatClock(fromJulianDay(jd));
+}
+
+function durUnitH() { return hDict().dur_h || 'ч'; }
+function durUnitM() { return hDict().dur_m || 'мин'; }
+
+function formatDurationMs(ms) {
+  const total = Math.max(0, Math.round(ms / MS_PER_MIN));
+  return `${Math.floor(total / 60)} ${durUnitH()} ${total % 60} ${durUnitM()}`;
+}
+
+function formatSignedMinutes(min) {
+  const r = Math.round(min);
+  if (!r) return `±0 ${durUnitM()}`;
+  return `${r > 0 ? '+' : '−'}${Math.abs(r)} ${durUnitM()}`;
+}
+
+function formatMinutesDelta(min) {
+  const r = Math.max(0, Math.round(min));
+  const hh = Math.floor(r / 60);
+  const mm = r % 60;
+  return hh > 0 ? `${hh} ${durUnitH()} ${mm} ${durUnitM()}` : `${mm} ${durUnitM()}`;
+}
+
+// Реальная элонгация Луны на заданный момент (без «усреднённой модели»).
+function elongAt(date) {
+  const jd = toJulianDay(date);
+  const m = getMoonPosition(jd).lon;
+  const s = getSunPosition(jd).lon;
+  return (((m - s) % 360) + 360) % 360;
+}
+
+// Ближайшая календарная дата с заданной реальной элонгацией (задание В1).
+function findDateForElongation(targetElong, aroundDate) {
+  const base = new Date(aroundDate.getFullYear(), aroundDate.getMonth(), aroundDate.getDate(), 12, 0, 0, 0);
+  let best = null;
+  let bestDiff = Infinity;
+  for (let i = -20; i <= 20; i++) {
+    const cand = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i, 12, 0, 0, 0);
+    const diff = Math.abs(((elongAt(cand) - targetElong + 540) % 360) - 180);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = cand;
+    }
+  }
+  return best || base;
+}
+
+/* ═══════════ ГОРИЗОНТ: реальные события дня ═══════════ */
+const horizonDataCache = new Map();
+
+function findUpperTransit(body, jdStart, jdEnd, latDeg, lonDeg) {
+  const step = 1 / 96;
+  let prev = getBodySkyPosition(jdStart, body, latDeg, lonDeg).hourAngleDeg;
+  for (let t = jdStart + step; t <= jdEnd + step; t += step) {
+    const tc = Math.min(t, jdEnd);
+    const cur = getBodySkyPosition(tc, body, latDeg, lonDeg).hourAngleDeg;
+    if (prev > 180 && cur < 180) {
+      let lo = tc - step;
+      let hi = tc;
+      for (let i = 0; i < 20; i++) {
+        const mid = (lo + hi) / 2;
+        const ha = getBodySkyPosition(mid, body, latDeg, lonDeg).hourAngleDeg;
+        if (ha > 180) lo = mid; else hi = mid;
+      }
+      return (lo + hi) / 2;
+    }
+    prev = cur;
+    if (tc >= jdEnd) break;
+  }
+  return null;
+}
+
+function buildDaySegments(rises, sets, jdDayStart, startsAbove) {
+  const events = [
+    ...rises.map((jd) => ({ h: (jd - jdDayStart) * 24, type: 'rise' })),
+    ...sets.map((jd) => ({ h: (jd - jdDayStart) * 24, type: 'set' }))
+  ].sort((a, b) => a.h - b.h);
+  const segs = [];
+  let above = startsAbove;
+  let curStart = 0;
+  for (const ev of events) {
+    const hr = Math.max(0, Math.min(24, ev.h));
+    if (ev.type === 'set' && above) {
+      segs.push([curStart, hr]);
+      above = false;
+    } else if (ev.type === 'rise' && !above) {
+      curStart = hr;
+      above = true;
+    }
+  }
+  if (above) segs.push([curStart, 24]);
+  return segs;
+}
+
+function computeHorizonData(date, lite) {
+  const key = `${dayKeyOf(date)}|${lite ? 'L' : 'F'}`;
+  const cached = horizonDataCache.get(key);
+  if (cached) return cached;
+
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const d = date.getDate();
+  const dayStart = new Date(y, m, d, 0, 0, 0, 0);
+  const dayEnd = new Date(y, m, d, 23, 59, 59, 999);
+  const jdStart = toJulianDay(dayStart);
+  const jdEnd = toJulianDay(dayEnd);
+  const { latDeg, lonDeg } = getObserverCoords();
+
+  const sunPos = (jd) => getBodySkyPosition(jd, 'sun', latDeg, lonDeg);
+  const moonPos = (jd) => getBodySkyPosition(jd, 'moon', latDeg, lonDeg);
+
+  const data = { date: dayStart, dayStart, dayEnd, jdStart, jdEnd, latDeg, lonDeg };
+
+  const moonEvents = findHorizonEventsForFn(
+    (jd) => moonPos(jd).altDeg, jdStart, jdEnd, latDeg, lonDeg
+  );
+  data.moonRise = moonEvents.rises[0] || null;
+  data.moonSet = moonEvents.sets[0] || null;
+  data.moonRise2 = moonEvents.rises[1] || null;
+
+  if (!lite) {
+    const sunEvents = findHorizonEventsForFn(
+      (jd) => sunPos(jd).altDeg, jdStart, jdEnd, latDeg, lonDeg
+    );
+    const civilEvents = findHorizonEventsForFn(
+      (jd) => sunPos(jd).geoAltDeg + 6, jdStart, jdEnd, latDeg, lonDeg
+    );
+    const nauticalEvents = findHorizonEventsForFn(
+      (jd) => sunPos(jd).geoAltDeg + 12, jdStart, jdEnd, latDeg, lonDeg
+    );
+
+    data.sunRise = sunEvents.rises[0] || null;
+    data.sunSet = sunEvents.sets[0] || null;
+    data.civilDawn = civilEvents.rises[0] || null;
+    data.civilDusk = civilEvents.sets[0] || null;
+    data.nauticalDawn = nauticalEvents.rises[0] || null;
+    data.nauticalDusk = nauticalEvents.sets[0] || null;
+    data.sunTransit = findUpperTransit('sun', jdStart, jdEnd, latDeg, lonDeg);
+    data.moonTransit = findUpperTransit('moon', jdStart, jdEnd, latDeg, lonDeg);
+
+    data.sunStartsAbove = sunPos(jdStart).altDeg > 0;
+    data.moonStartsAbove = moonPos(jdStart).altDeg > 0;
+    data.sunSegments = buildDaySegments(sunEvents.rises, sunEvents.sets, jdStart, data.sunStartsAbove);
+    data.moonSegments = buildDaySegments(moonEvents.rises, moonEvents.sets, jdStart, data.moonStartsAbove);
+    data.civilSegments = buildDaySegments(
+      civilEvents.rises, civilEvents.sets, jdStart, sunPos(jdStart).geoAltDeg + 6 > 0
+    );
+    data.nauticalSegments = buildDaySegments(
+      nauticalEvents.rises, nauticalEvents.sets, jdStart, sunPos(jdStart).geoAltDeg + 12 > 0
+    );
+  }
+
+  horizonDataCache.set(key, data);
+  if (horizonDataCache.size > 160) horizonDataCache.clear();
+  return data;
+}
+
+// Цвет неба — по реальной высоте Солнца (с настоящими сумерками).
+const SKY_BY_ALT = [
+  { alt: 90, top: [26, 43, 94], bot: [74, 111, 165] },
+  { alt: 8, top: [26, 43, 94], bot: [74, 111, 165] },
+  { alt: 0, top: [40, 40, 80], bot: [120, 80, 100] },
+  { alt: -6, top: [50, 30, 60], bot: [180, 80, 60] },
+  { alt: -12, top: [14, 18, 44], bot: [34, 34, 78] },
+  { alt: -18, top: [5, 8, 20], bot: [16, 21, 48] }
 ];
 
-function formatApproxHour(hourFloat) {
-  const norm = ((hourFloat % 24) + 24) % 24;
-  let hh = Math.floor(norm);
-  let mm = Math.round((norm - hh) * 60);
-  if (mm >= 60) {
-    mm = 0;
-    hh = (hh + 1) % 24;
+function skyColorsForAlt(alt) {
+  if (alt >= SKY_BY_ALT[0].alt) return { top: SKY_BY_ALT[0].top, bot: SKY_BY_ALT[0].bot };
+  for (let i = 0; i < SKY_BY_ALT.length - 1; i++) {
+    const a = SKY_BY_ALT[i];
+    const b = SKY_BY_ALT[i + 1];
+    if (alt <= a.alt && alt >= b.alt) {
+      const p = (a.alt - alt) / (a.alt - b.alt);
+      return { top: lerpColor(a.top, b.top, p), bot: lerpColor(a.bot, b.bot, p) };
+    }
   }
-  return `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}`;
+  const last = SKY_BY_ALT[SKY_BY_ALT.length - 1];
+  return { top: last.top, bot: last.bot };
+}
+
+// Азимут 90° (восток) — левый край, 270° (запад) — правый: вид на юг.
+function horizonAzToX(az) {
+  const W = horizonCanvas.width;
+  return 42 + ((az - 90) / 180) * (W - 84);
+}
+
+function horizonGroundY() {
+  return Math.min(230, horizonCanvas.height - 150);
+}
+
+function horizonAltToY(alt) {
+  const groundY = horizonGroundY();
+  return groundY - (alt / 90) * (groundY - 18);
+}
+
+function drawDiurnalPath(body, data) {
+  const steps = 96;
+  hctx.beginPath();
+  for (let i = 0; i <= steps; i++) {
+    const jd = data.jdStart + ((data.jdEnd - data.jdStart) * i) / steps;
+    const p = getBodySkyPosition(jd, body, data.latDeg, data.lonDeg);
+    const x = horizonAzToX(p.azDeg);
+    const y = horizonAltToY(p.altDeg);
+    if (i === 0) hctx.moveTo(x, y);
+    else hctx.lineTo(x, y);
+  }
+  hctx.stroke();
+}
+
+function drawSkyBody(pos, kind, elong) {
+  const h = hDict();
+  const W = horizonCanvas.width;
+  const groundY = horizonGroundY();
+  const visible = pos.altDeg > 0 && pos.azDeg >= 90 && pos.azDeg <= 270;
+  const label = kind === 'sun' ? (h.horizon_sun_label || 'Sun') : (h.canvas_moon || 'Moon');
+
+  if (!visible) {
+    const east = pos.azDeg < 180;
+    hctx.fillStyle = kind === 'sun' ? 'rgba(245, 183, 62, 0.9)' : 'rgba(154, 160, 181, 0.95)';
+    hctx.font = '11px sans-serif';
+    hctx.textAlign = east ? 'left' : 'right';
+    const state = pos.altDeg <= 0
+      ? (h.horizon_below || 'below horizon')
+      : (h.horizon_behind || 'behind');
+    hctx.fillText(`${label} — ${state} (${Math.round(pos.azDeg)}°)`, east ? 48 : W - 48, groundY - 14);
+    return;
+  }
+
+  const x = horizonAzToX(pos.azDeg);
+  const y = horizonAltToY(pos.altDeg);
+  if (kind === 'sun') {
+    const sunR = 26;
+    const g = hctx.createRadialGradient(x, y, 4, x, y, sunR);
+    g.addColorStop(0, '#fff3c4');
+    g.addColorStop(0.5, '#ffd76a');
+    g.addColorStop(1, 'rgba(245, 183, 62, 0)');
+    hctx.fillStyle = g;
+    hctx.beginPath();
+    hctx.arc(x, y, sunR, 0, Math.PI * 2);
+    hctx.fill();
+
+    hctx.fillStyle = '#f5b73e';
+    hctx.beginPath();
+    hctx.arc(x, y, 13, 0, Math.PI * 2);
+    hctx.fill();
+
+    hctx.fillStyle = 'rgba(245, 183, 62, 0.95)';
+    hctx.font = '11px sans-serif';
+    hctx.textAlign = 'center';
+    hctx.fillText(`${label} ${Math.round(pos.altDeg)}°`, x, y + 40);
+  } else {
+    const isNearSun = elong <= 7 || elong >= 353;
+    drawEarthViewMoon(hctx, x, y, 17, elong, { glow: 14, dimNearSun: true });
+    hctx.fillStyle = isNearSun ? '#9aa0b5' : '#e8e9f0';
+    hctx.font = '11.5px sans-serif';
+    hctx.textAlign = 'center';
+    hctx.fillText(`${label} ${Math.round(pos.altDeg)}°`, x, y + 31);
+  }
 }
 
 function drawHorizon() {
   const h = hDict();
   const W = horizonCanvas.width;
   const H = horizonCanvas.height;
+  const groundY = horizonGroundY();
+  const data = computeHorizonData(horizonDate);
   const time = parseFloat(timeSlider.value);
-  const eNorm = ((currentElong % 360) + 360) % 360;
-  const groundY = Math.min(230, H - 150);
-
-  let liveDetails = null;
-  if (horizonIsLiveToday) {
-    const nowDate = new Date();
-    const totalMin = Math.round(Math.max(0, Math.min(24, time)) * 60);
-    const refMoment = new Date(
-      nowDate.getFullYear(),
-      nowDate.getMonth(),
-      nowDate.getDate(),
-      0,
-      totalMin,
-      0,
-      0
-    );
-    liveDetails = getHorizonDayDetails(refMoment);
-  }
+  const totalMin = Math.round(Math.max(0, Math.min(23.98, time)) * 60);
+  const refMoment = new Date(
+    data.date.getFullYear(), data.date.getMonth(), data.date.getDate(), 0, totalMin, 0, 0
+  );
+  const refJD = toJulianDay(refMoment);
+  const sunNow = getBodySkyPosition(refJD, 'sun', data.latDeg, data.lonDeg);
+  const moonNow = getBodySkyPosition(refJD, 'moon', data.latDeg, data.lonDeg);
+  const eNorm = elongAt(data.date);
 
   hctx.clearRect(0, 0, W, H);
 
-  let k1 = skyKeys[0];
-  let k2 = skyKeys[skyKeys.length - 1];
-  for (let i = 0; i < skyKeys.length - 1; i++) {
-    if (time >= skyKeys[i].t && time <= skyKeys[i + 1].t) {
-      k1 = skyKeys[i];
-      k2 = skyKeys[i + 1];
-      break;
-    }
-  }
-  const p = (time - k1.t) / (k2.t - k1.t);
-  const topColor = rgbStr(lerpColor(k1.top, k2.top, p));
-  const botColor = rgbStr(lerpColor(k1.bot, k2.bot, p));
-
+  // ── Небо: реальная высота Солнца ──
+  const sky = skyColorsForAlt(sunNow.geoAltDeg);
   const skyGrad = hctx.createLinearGradient(0, 0, 0, groundY);
-  skyGrad.addColorStop(0, topColor);
-  skyGrad.addColorStop(1, botColor);
+  skyGrad.addColorStop(0, rgbStr(sky.top));
+  skyGrad.addColorStop(1, rgbStr(sky.bot));
   hctx.fillStyle = skyGrad;
   hctx.fillRect(0, 0, W, groundY);
 
-  const isSunUp = liveDetails ? liveDetails.sunState.above : (time >= 6 && time <= 18);
-  if (!isSunUp) {
-    const nightAlpha = liveDetails ? 0.55 : 0.6 * (time < 6 ? 1 - time / 6 : (time - 18) / 6);
-    hctx.fillStyle = `rgba(255,255,255,${nightAlpha})`;
-    for (let i = 0; i < 30; i++) {
+  const darkness = Math.max(0, Math.min(1, (-6 - sunNow.geoAltDeg) / 10));
+  if (darkness > 0) {
+    hctx.fillStyle = `rgba(255,255,255,${0.12 + 0.45 * darkness})`;
+    for (let i = 0; i < 42; i++) {
       hctx.beginPath();
-      hctx.arc((i * 61) % W, (i * 37) % (groundY - 14), (i % 2) * 0.8 + 0.5, 0, Math.PI * 2);
+      hctx.arc((i * 61) % W, (i * 37) % (groundY - 12), ((i % 3) + 1) * 0.22, 0, Math.PI * 2);
       hctx.fill();
     }
   }
 
-  const sunRx = W / 2 - 42;
-  const sunRy = groundY - 36;
-  const moonRx = W / 2 - 42;
-  const moonRy = groundY - 76;
-
-  // Траектории Солнца и Луны над горизонтом (разделены по высоте)
+  // ── Суточные дуги: реальная геометрия для широты наблюдателя ──
   hctx.save();
+  hctx.beginPath();
+  hctx.rect(42, 0, W - 84, groundY);
+  hctx.clip();
   hctx.setLineDash([4, 5]);
   hctx.lineWidth = 1.25;
-  hctx.strokeStyle = 'rgba(245, 183, 62, 0.25)';
-  hctx.beginPath();
-  hctx.ellipse(W / 2, groundY, sunRx, sunRy, 0, Math.PI, Math.PI * 2, false);
-  hctx.stroke();
-
-  hctx.strokeStyle = 'rgba(127, 156, 245, 0.3)';
-  hctx.beginPath();
-  hctx.ellipse(W / 2, groundY, moonRx, moonRy, 0, Math.PI, Math.PI * 2, false);
-  hctx.stroke();
+  hctx.strokeStyle = 'rgba(245, 183, 62, 0.32)';
+  drawDiurnalPath('sun', data);
+  hctx.strokeStyle = 'rgba(127, 156, 245, 0.38)';
+  drawDiurnalPath('moon', data);
   hctx.setLineDash([]);
   hctx.restore();
 
-  // Солнце
-  let drawSun = false;
-  let sunAngle = 0;
-  if (liveDetails) {
-    if (liveDetails.sunState.above) {
-      drawSun = true;
-      sunAngle = liveDetails.sunState.progress * Math.PI;
-    }
-  } else if (time >= 5.5 && time <= 18.5) {
-    sunAngle = ((time - 6) / 12) * Math.PI;
-    drawSun = true;
-  }
+  drawSkyBody(sunNow, 'sun', eNorm);
+  drawSkyBody(moonNow, 'moon', eNorm);
 
-  if (drawSun) {
-    const sunX = W / 2 - Math.cos(sunAngle) * sunRx;
-    const sunY = groundY - Math.sin(sunAngle) * sunRy;
-    if (sunY < groundY + 12) {
-      const sunR = 28;
-      const sunG = hctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, sunR);
-      sunG.addColorStop(0, '#fff3c4');
-      sunG.addColorStop(0.5, '#ffd76a');
-      sunG.addColorStop(1, 'rgba(245, 183, 62, 0)');
-      hctx.fillStyle = sunG;
-      hctx.beginPath();
-      hctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
-      hctx.fill();
+  // ── Дата и время в углах ──
+  hctx.fillStyle = 'rgba(139, 145, 168, 0.95)';
+  hctx.font = 'bold 13px sans-serif';
+  hctx.textAlign = 'left';
+  hctx.fillText(formatDateShort(data.date), 16, 26);
 
-      hctx.fillStyle = '#f5b73e';
-      hctx.beginPath();
-      hctx.arc(sunX, sunY, 13, 0, Math.PI * 2);
-      hctx.fill();
-    }
-  }
-
-  // Луна
-  let moonAbove = false;
-  let moonAngle = 0;
-  if (liveDetails) {
-    if (liveDetails.moonState.above) {
-      moonAbove = true;
-      moonAngle = liveDetails.moonState.progress * Math.PI;
-    }
-  } else {
-    let moonTime = time - (eNorm / 360) * 24;
-    if (moonTime < 0) moonTime += 24;
-    if (moonTime > 24) moonTime -= 24;
-    moonAngle = ((moonTime - 6) / 12) * Math.PI;
-    if (Math.sin(moonAngle) > 0) {
-      moonAbove = true;
-    }
-  }
-
-  const moonR = 17;
-  const isNearSun = eNorm <= 7 || eNorm >= 353;
-
-  if (moonAbove) {
-    const moonX = W / 2 - Math.cos(moonAngle) * moonRx;
-    const moonY = groundY - Math.sin(moonAngle) * moonRy;
-    drawEarthViewMoon(hctx, moonX, moonY, moonR, eNorm, { glow: 14, dimNearSun: true });
-
-    hctx.fillStyle = isNearSun ? '#9aa0b5' : '#e8e9f0';
-    hctx.font = '11.5px sans-serif';
-    hctx.textAlign = 'center';
-    const moonLabel = isNearSun ? (h.canvas_moon_hidden || 'Moon (hidden)') : (h.canvas_moon || 'Moon');
-    hctx.fillText(moonLabel, moonX, moonY + moonR + 14, 130);
-  } else {
-    hctx.fillStyle = 'rgba(154, 160, 181, 0.55)';
-    hctx.font = '12px sans-serif';
-    hctx.textAlign = 'center';
-    hctx.fillText(h.canvas_moon_below || 'Moon below horizon', W / 2, groundY - 16, W - 40);
-  }
-
-  // Текущее время в углу неба
   hctx.fillStyle = 'rgba(232, 233, 240, 0.85)';
   hctx.font = 'bold 18px monospace';
   hctx.textAlign = 'right';
   hctx.fillText(formatSliderHour(time), W - 16, 28);
 
-  // Нижняя панель: горизонт, восход/кульминация/заход и 24ч шкала
+  // ── Нижняя панель ──
   hctx.fillStyle = '#0d111a';
   hctx.fillRect(0, groundY, W, H - groundY);
   hctx.strokeStyle = '#2a3152';
@@ -671,40 +861,40 @@ function drawHorizon() {
   hctx.fillStyle = '#8b91a8';
   hctx.font = '11px sans-serif';
   hctx.textAlign = 'center';
-  hctx.fillText(h.canvas_east || 'EAST', 42, groundY + 18, 72);
-  hctx.fillText(h.canvas_south || 'SOUTH', W / 2, groundY + 18, 72);
-  hctx.fillText(h.canvas_west || 'WEST', W - 42, groundY + 18, 72);
+  hctx.fillText(h.canvas_east || 'EAST', 42, groundY + 16, 72);
+  hctx.fillText(h.canvas_south || 'SOUTH', W / 2, groundY + 16, 72);
+  hctx.fillText(h.canvas_west || 'WEST', W - 42, groundY + 16, 72);
 
-  const elongHours = (eNorm / 360) * 24;
-  const riseH = (6 + elongHours) % 24;
-  const transitH = (12 + elongHours) % 24;
-  const setH = (18 + elongHours) % 24;
+  const sunW = h.horizon_sun_label || 'Sun';
+  const moonW = h.canvas_moon || 'Moon';
+  const riseW = h.horizon_rise_word || 'rise';
+  const setW = h.horizon_set_word || 'set';
+  const transW = h.horizon_transit_word || 'culmination';
 
-  const riseText = liveDetails
-    ? `${h.canvas_rise_exact_prefix || 'Rise '}${liveDetails.moonriseStr}`
-    : `${h.canvas_rise_prefix || 'Rise ~'}${formatApproxHour(riseH)}`;
-  const transitText = liveDetails
-    ? `${h.canvas_culmination_exact_prefix || 'South '}${liveDetails.moonTransitStr}`
-    : `${h.canvas_culmination_prefix || 'South ~'}${formatApproxHour(transitH)}`;
-  const setText = liveDetails
-    ? `${h.canvas_set_exact_prefix || 'Set '}${liveDetails.moonsetStr}`
-    : `${h.canvas_set_prefix || 'Set ~'}${formatApproxHour(setH)}`;
+  hctx.font = 'bold 11px sans-serif';
+  hctx.fillStyle = '#f5b73e';
+  hctx.textAlign = 'left';
+  hctx.fillText(`${sunW} ${riseW} ${formatClockJD(data.sunRise)}`, 50, groundY + 36, 150);
+  hctx.textAlign = 'center';
+  hctx.fillText(`${sunW} ${transW} ${formatClockJD(data.sunTransit)}`, W / 2, groundY + 36, 160);
+  hctx.textAlign = 'right';
+  hctx.fillText(`${sunW} ${setW} ${formatClockJD(data.sunSet)}`, W - 50, groundY + 36, 150);
 
-  hctx.font = 'bold 11.5px sans-serif';
-  hctx.fillStyle = '#f5a47f';
-  hctx.fillText(riseText, 86, groundY + 42, 145);
   hctx.fillStyle = '#7f9cf5';
-  hctx.fillText(transitText, W / 2, groundY + 42, 145);
-  hctx.fillStyle = '#9aa0b5';
-  hctx.fillText(setText, W - 86, groundY + 42, 145);
+  hctx.textAlign = 'left';
+  hctx.fillText(`${moonW} ${riseW} ${formatClockJD(data.moonRise)}`, 50, groundY + 54, 150);
+  hctx.textAlign = 'center';
+  hctx.fillText(`${moonW} ${transW} ${formatClockJD(data.moonTransit)}`, W / 2, groundY + 54, 160);
+  hctx.textAlign = 'right';
+  hctx.fillText(`${moonW} ${setW} ${formatClockJD(data.moonSet)}`, W - 50, groundY + 54, 150);
 
-  // 24-часовая лента видимости над горизонтом
+  // ── 24-часовая лента ──
   const tlX = 64;
   const tlW = W - 80;
-  const tlTop = groundY + 62;
-  const sunBarY = tlTop + 10;
-  const moonBarY = tlTop + 32;
-  const barH = 14;
+  const tlTop = groundY + 68;
+  const sunBarY = tlTop + 14;
+  const moonBarY = tlTop + 34;
+  const barH = 13;
 
   hctx.fillStyle = '#6b7190';
   hctx.font = '10.5px sans-serif';
@@ -712,51 +902,41 @@ function drawHorizon() {
   hctx.fillText(h.canvas_timeline_24h || 'Above horizon (24h)', tlX, tlTop + 2, tlW - 95);
 
   hctx.textAlign = 'right';
-  hctx.fillStyle = liveDetails ? '#7fd1ae' : '#f5a47f';
-  hctx.fillText(
-    liveDetails ? (h.horizon_live_mode || 'Live (today)') : (h.horizon_model_mode || 'Model ~'),
-    tlX + tlW,
-    tlTop + 2,
-    95
-  );
+  hctx.fillStyle = '#7fd1ae';
+  hctx.fillText(`${h.horizon_fact_label || 'Fact'}: ${formatDateShort(data.date)}`, tlX + tlW, tlTop + 2, 95);
 
-  // Метки строк шкалы
   hctx.font = '10.5px sans-serif';
   hctx.textAlign = 'right';
   hctx.fillStyle = '#f5b73e';
-  hctx.fillText(h.canvas_sun || 'SUN', tlX - 8, sunBarY + 11, 52);
+  hctx.fillText(sunW, tlX - 8, sunBarY + 11, 52);
   hctx.fillStyle = '#e8e6d8';
-  hctx.fillText(h.canvas_moon || 'Moon', tlX - 8, moonBarY + 11, 52);
+  hctx.fillText(moonW, tlX - 8, moonBarY + 11, 52);
 
-  // Фон дорожек
   hctx.fillStyle = '#141828';
   hctx.fillRect(tlX, sunBarY, tlW, barH);
   hctx.fillRect(tlX, moonBarY, tlW, barH);
 
-  // Полоса Солнца
-  hctx.fillStyle = 'rgba(245, 183, 62, 0.72)';
-  if (liveDetails) {
-    for (const [s, e] of liveDetails.sunSegments) {
-      hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 2, ((e - s) / 24) * tlW, barH - 4);
-    }
-  } else {
-    hctx.fillRect(tlX + (6 / 24) * tlW, sunBarY + 2, (12 / 24) * tlW, barH - 4);
+  // Сумерки (гражданские, Солнце ниже −6°) — подсветка за полосой Солнца
+  hctx.fillStyle = 'rgba(245, 183, 62, 0.2)';
+  for (const [s, e] of data.civilSegments) {
+    hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 2, ((e - s) / 24) * tlW, barH - 4);
+  }
+  hctx.fillStyle = 'rgba(120, 140, 200, 0.18)';
+  for (const [s, e] of data.nauticalSegments || []) {
+    hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 2, ((e - s) / 24) * tlW, barH - 4);
   }
 
-  // Полоса Луны
+  hctx.fillStyle = 'rgba(245, 183, 62, 0.85)';
+  for (const [s, e] of data.sunSegments) {
+    hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 2, ((e - s) / 24) * tlW, barH - 4);
+  }
+
+  const isNearSun = eNorm <= 7 || eNorm >= 353;
   hctx.fillStyle = isNearSun ? 'rgba(139, 145, 168, 0.45)' : 'rgba(127, 156, 245, 0.85)';
-  if (liveDetails) {
-    for (const [s, e] of liveDetails.moonSegments) {
-      hctx.fillRect(tlX + (s / 24) * tlW, moonBarY + 2, ((e - s) / 24) * tlW, barH - 4);
-    }
-  } else if (riseH < setH) {
-    hctx.fillRect(tlX + (riseH / 24) * tlW, moonBarY + 2, ((setH - riseH) / 24) * tlW, barH - 4);
-  } else {
-    hctx.fillRect(tlX + (riseH / 24) * tlW, moonBarY + 2, ((24 - riseH) / 24) * tlW, barH - 4);
-    hctx.fillRect(tlX, moonBarY + 2, (setH / 24) * tlW, barH - 4);
+  for (const [s, e] of data.moonSegments) {
+    hctx.fillRect(tlX + (s / 24) * tlW, moonBarY + 2, ((e - s) / 24) * tlW, barH - 4);
   }
 
-  // Сетка 00 / 06 / 12 / 18 / 24
   hctx.font = '10px monospace';
   hctx.textAlign = 'center';
   for (let hr = 0; hr <= 24; hr += 6) {
@@ -769,10 +949,9 @@ function drawHorizon() {
     hctx.stroke();
 
     hctx.fillStyle = '#6b7190';
-    hctx.fillText(hr.toString().padStart(2, '0'), gx, moonBarY + barH + 13);
+    hctx.fillText(String(hr).padStart(2, '0'), gx, moonBarY + barH + 13);
   }
 
-  // Маркер текущего времени на шкале
   const curX = tlX + (time / 24) * tlW;
   hctx.strokeStyle = '#ffffff';
   hctx.lineWidth = 2;
@@ -780,17 +959,280 @@ function drawHorizon() {
   hctx.moveTo(curX, sunBarY - 3);
   hctx.lineTo(curX, moonBarY + barH + 3);
   hctx.stroke();
+
+  // Легенда сумерок
+  const legendY = H - 11;
+  hctx.fillStyle = 'rgba(245, 183, 62, 0.35)';
+  hctx.fillRect(16, legendY - 7, 12, 8);
+  hctx.fillStyle = '#6b7190';
+  hctx.font = '9.5px sans-serif';
+  hctx.textAlign = 'left';
+  hctx.fillText(h.horizon_twilight_label || 'twilight (−6°)', 33, legendY);
+}
+
+/* ═══════════ ПАНЕЛИ РАЗДЕЛА «ВОСХОД И ЗАХОД» ═══════════ */
+function horizonDriftSeries(fromDate, count) {
+  const rows = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate() + i);
+    const lite = computeHorizonData(d, true);
+    rows.push({ date: d, rise: lite.moonRise });
+  }
+  return rows;
+}
+
+function drawHorizonDrift() {
+  const c = document.getElementById('horizonDriftCanvas');
+  if (!c) return;
+  const h = hDict();
+  const g = c.getContext('2d');
+  const W = c.width;
+  const H = c.height;
+  g.clearRect(0, 0, W, H);
+
+  const rows = horizonDriftSeries(horizonDate, 8);
+  const items = [];
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i].rise === null || rows[i - 1].rise === null) continue;
+    // Между восходами в соседних календарных сутках проходит ~1440 мин плюс сам сдвиг.
+    const min = Math.round((rows[i].rise - rows[i - 1].rise) * 24 * 60) - 1440;
+    items.push({ date: rows[i].date, min });
+  }
+  if (!items.length) return;
+
+  const padL = 26;
+  const padR = 10;
+  const padT = 20;
+  const padB = 26;
+  const maxMin = Math.max(20, ...items.map((it) => it.min));
+  const avg = items.reduce((a, b) => a + b.min, 0) / items.length;
+  const barW = (W - padL - padR) / items.length;
+  const yOf = (m) => padT + (1 - m / maxMin) * (H - padT - padB);
+
+  g.strokeStyle = 'rgba(255,255,255,0.12)';
+  g.setLineDash([3, 3]);
+  g.beginPath();
+  g.moveTo(padL, yOf(avg));
+  g.lineTo(W - padR, yOf(avg));
+  g.stroke();
+  g.setLineDash([]);
+
+  g.fillStyle = '#8b91a8';
+  g.font = '9.5px sans-serif';
+  g.textAlign = 'right';
+  g.fillText(`${h.horizon_drift_avg || 'average'} ${Math.round(avg)}`, W - padR, yOf(avg) - 4);
+
+  items.forEach((it, i) => {
+    const x = padL + i * barW + barW * 0.2;
+    const bw = barW * 0.6;
+    const y = yOf(it.min);
+    const standstill = Math.abs(it.min) < 15;
+    g.fillStyle = standstill ? 'rgba(127, 209, 174, 0.85)' : 'rgba(245, 164, 127, 0.85)';
+    g.fillRect(x, y, bw, (H - padB) - y);
+
+    g.fillStyle = '#c9cde0';
+    g.font = 'bold 10px sans-serif';
+    g.textAlign = 'center';
+    g.fillText(`${it.min > 0 ? '+' : ''}${it.min}`, x + bw / 2, y - 4);
+
+    g.fillStyle = '#8b91a8';
+    g.font = '9.5px sans-serif';
+    g.fillText(formatDateShort(it.date), x + bw / 2, H - padB + 12);
+  });
+
+  g.fillStyle = '#6b7190';
+  g.font = '9px sans-serif';
+  g.textAlign = 'right';
+  g.fillText(h.horizon_drift_unit || 'min/day', W - padR, 11);
+}
+
+function setHorizonDate(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  horizonDate = d;
+  const e = elongAt(d);
+  if (phaseSliderHorizon) {
+    phaseSliderHorizon.value = String(Math.round(e));
+    phaseValHorizon.textContent = Math.round(e) + '°';
+  }
+  const dateInput = document.getElementById('horizonDateInput');
+  if (dateInput) {
+    dateInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const dateVal = document.getElementById('horizonDateVal');
+  if (dateVal) dateVal.textContent = formatDateShort(d);
+  updateHorizonPanels();
+  drawHorizon();
+}
+
+function updateHorizonPanels() {
+  const h = hDict();
+  const data = computeHorizonData(horizonDate);
+  const time = parseFloat(timeSlider.value);
+  const totalMin = Math.round(Math.max(0, Math.min(23.98, time)) * 60);
+  const refMoment = new Date(
+    data.date.getFullYear(), data.date.getMonth(), data.date.getDate(), 0, totalMin, 0, 0
+  );
+  const refJD = toJulianDay(refMoment);
+
+  const sunW = h.horizon_sun_label || 'Sun';
+  const moonW = h.canvas_moon || 'Moon';
+  const riseW = h.horizon_rise_word || 'rise';
+  const setW = h.horizon_set_word || 'set';
+  const transW = h.horizon_transit_word || 'culmination';
+
+  const obsEl = document.getElementById('horizonObserverInfo');
+  if (obsEl) {
+    obsEl.textContent =
+      `${formatDateShort(data.date)} · ${data.latDeg.toFixed(2)}°, ${data.lonDeg.toFixed(2)}°: ` +
+      `${moonW} — ${riseW} ${formatClockJD(data.moonRise)}, ${setW} ${formatClockJD(data.moonSet)}; ` +
+      `${sunW} — ${riseW} ${formatClockJD(data.sunRise)}, ${setW} ${formatClockJD(data.sunSet)}.`;
+  }
+
+  const nextEl = document.getElementById('horizonNextEvent');
+  if (nextEl) {
+    const collect = (d) => ([
+      { jd: d.sunRise, text: `${sunW} ${riseW}` },
+      { jd: d.sunTransit, text: `${sunW} ${transW}` },
+      { jd: d.sunSet, text: `${sunW} ${setW}` },
+      { jd: d.moonRise, text: `${moonW} ${riseW}` },
+      { jd: d.moonTransit, text: `${moonW} ${transW}` },
+      { jd: d.moonSet, text: `${moonW} ${setW}` }
+    ]);
+    const tomorrow = new Date(
+      data.date.getFullYear(), data.date.getMonth(), data.date.getDate() + 1
+    );
+    const events = [
+      ...collect(data),
+      ...collect(computeHorizonData(tomorrow))
+    ].filter((e) => e.jd !== null && e.jd !== undefined && e.jd > refJD);
+    events.sort((a, b) => a.jd - b.jd);
+    if (events.length) {
+      const ev = events[0];
+      const delta = Math.round((ev.jd - refJD) * 24 * 60);
+      const isTomorrow = ev.jd > toJulianDay(new Date(
+        data.date.getFullYear(), data.date.getMonth(), data.date.getDate() + 1
+      ));
+      nextEl.textContent =
+        `${h.horizon_next_event_label || 'Next event'}: ${ev.text} ` +
+        `${formatDateShort(fromJulianDay(ev.jd))} ${formatClockJD(ev.jd)} — ` +
+        `${h.horizon_after_label || 'in'} ${formatMinutesDelta(delta)}` +
+        (isTomorrow ? ` (${h.horizon_tomorrow_word || 'tomorrow'})` : '') + '.';
+    } else {
+      nextEl.textContent =
+        `${h.horizon_next_event_label || 'Next event'}: ${h.horizon_no_more_events || 'no more events today'}.`;
+    }
+  }
+
+  const linkEl = document.getElementById('horizonLunarLink');
+  if (linkEl) {
+    const lun = getLunationIntervals(refJD);
+    const iv =
+      lun.intervals.find((x) => refJD >= x.startJD && refJD < x.endJD) ||
+      lun.intervals[lun.intervals.length - 1];
+    const sD = fromJulianDay(iv.startJD);
+    const eD = fromJulianDay(iv.endJD);
+    linkEl.textContent =
+      `${h.horizon_lunar_link_label || 'Lunar day'}: ${iv.day} — ` +
+      `${formatDateShort(sD)} ${formatClock(sD)} → ${formatDateShort(eD)} ${formatClock(eD)}. ` +
+      `${h.horizon_lunar_link_note || 'Lunar days run from moonrise to moonrise.'}`;
+  }
+
+  const driftEl = document.getElementById('horizonDriftNote');
+  if (driftEl) {
+    const rows = horizonDriftSeries(horizonDate, 8);
+    let firstDrift = null;
+    let sum = 0;
+    let n = 0;
+    let minD = null;
+    let maxD = null;
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].rise === null || rows[i - 1].rise === null) continue;
+      const min = Math.round((rows[i].rise - rows[i - 1].rise) * 24 * 60) - 1440;
+      if (firstDrift === null) firstDrift = min;
+      sum += min;
+      n++;
+      if (minD === null || min < minD.min) minD = { min };
+      if (maxD === null || min > maxD.max) maxD = { max: min };
+    }
+    const parts = [];
+    if (firstDrift !== null) {
+      parts.push(`${h.horizon_drift_tomorrow || 'Tomorrow'} ${formatSignedMinutes(firstDrift)}`);
+    }
+    if (n) {
+      parts.push(`${h.horizon_drift_avg || 'average'} ${formatSignedMinutes(sum / n)}`);
+      parts.push(`${h.horizon_drift_range || 'range'} ${formatSignedMinutes(minD.min)}…${formatSignedMinutes(maxD.max)}`);
+    }
+    driftEl.textContent = parts.join(' · ');
+  }
+
+  const tipEl = document.getElementById('horizonTip');
+  if (tipEl) {
+    const elong = elongAt(data.date);
+    const parts = [];
+    parts.push(
+      `${formatDateShort(data.date)}: ${sunW} ${riseW} ${formatClockJD(data.sunRise)}, ` +
+      `${setW} ${formatClockJD(data.sunSet)}; ${moonW} (${h.horizon_elong_word || 'elongation'} ` +
+      `${Math.round(elong)}°) ${riseW} ${formatClockJD(data.moonRise)}`
+    );
+    if (data.sunRise !== null && data.moonRise !== null) {
+      const diff = Math.round((data.moonRise - data.sunRise) * 24 * 60);
+      parts.push(
+        `— ${formatMinutesDelta(Math.abs(diff))} ` +
+        `${diff >= 0 ? (h.horizon_later_than || 'later than the Sun') : (h.horizon_earlier_than || 'earlier than the Sun')}`
+      );
+    }
+    const tomorrow = horizonDriftSeries(horizonDate, 2)[1];
+    if (tomorrow && tomorrow.rise !== null) {
+      parts.push(`${h.horizon_next_rise || 'Next moonrise'} ${formatDateShort(tomorrow.date)} ${formatClockJD(tomorrow.rise)}.`);
+    }
+    tipEl.textContent = parts.join(' ');
+  }
+
+  drawHorizonDrift();
 }
 
 /* ═══════════ ЛУННЫЕ СУТКИ ═══════════ */
 const daySlider = document.getElementById('daySlider');
 const dayVal = document.getElementById('dayVal');
+const daysTodayBtn = document.getElementById('daysTodayBtn');
 
 daySlider.addEventListener('input', (e) => {
   dayVal.textContent = e.target.value;
   drawLunarDays(+e.target.value);
+  updateLunarDayPanels(+e.target.value);
 });
 
+if (daysTodayBtn) {
+  daysTodayBtn.addEventListener('click', () => {
+    const cur = currentLunarDayNumber();
+    daySlider.value = String(cur);
+    dayVal.textContent = String(cur);
+    drawLunarDays(cur);
+    updateLunarDayPanels(cur);
+  });
+}
+
+function lunarCycle() {
+  return getLunationIntervals(toJulianDay(new Date()));
+}
+
+function lunarCycleIntervals() {
+  return lunarCycle().intervals;
+}
+
+function currentLunarDayNumber() {
+  const jdNow = toJulianDay(new Date());
+  const intervals = lunarCycleIntervals();
+  const cur =
+    intervals.find((x) => jdNow >= x.startJD && jdNow < x.endJD) ||
+    intervals[intervals.length - 1];
+  return cur.day;
+}
+
+/**
+ * Лунные сутки в реальных границах: горизонтальная ось — календарное время,
+ * строки — лунные сутки. Полоска идёт от восхода до восхода, точка — восход.
+ */
 function drawLunarDays(day) {
   const h = hDict();
   const c = document.getElementById('lunarDayCanvas');
@@ -799,95 +1241,237 @@ function drawLunarDays(day) {
   const H = c.height;
   g.clearRect(0, 0, W, H);
 
-  let startDay = day - 1;
-  if (startDay < 1) startDay = 1;
-  if (startDay > 28) startDay = 28;
-  const showCount = 3;
-  const colW = W / showCount;
+  const lun = lunarCycle();
+  const intervals = lun.intervals;
+  let selIdx = intervals.findIndex((iv) => iv.day === day);
+  if (selIdx < 0) selIdx = 0;
+  const selected = intervals[selIdx];
 
-  const baseMoonrise = 6;
-  const shiftPerDay = 50 / 60;
+  const rowCount = 5;
+  const firstIdx = Math.max(0, Math.min(Math.max(0, intervals.length - rowCount), selIdx - 2));
+  const rows = intervals.slice(firstIdx, firstIdx + rowCount);
 
-  for (let i = 0; i < showCount; i++) {
-    const d = startDay + i;
-    const x = i * colW;
+  const winStart = selected.startJD - 0.6;
+  const winEnd = selected.endJD + 0.6;
+  const span = winEnd - winStart;
 
-    g.fillStyle = d === day ? 'rgba(42, 49, 82, 0.4)' : 'rgba(20, 24, 40, 0.4)';
-    g.fillRect(x, 0, colW, H);
-    g.strokeStyle = '#262c45';
-    g.beginPath();
-    g.moveTo(x + colW, 0);
-    g.lineTo(x + colW, H);
-    g.stroke();
+  const padL = 44;
+  const padR = 12;
+  const axisH = 42;
+  const top = 24;
+  const rowH = (H - top - axisH) / rowCount;
+  const xOf = (jd) => padL + ((jd - winStart) / span) * (W - padL - padR);
 
-    g.fillStyle = '#8b91a8';
-    g.font = '11px sans-serif';
-    g.textAlign = 'center';
-    g.fillText(`${h.canvas_day_prefix || 'Day'} ${d}`, x + colW / 2, 20, colW - 16);
+  g.fillStyle = 'rgba(13, 17, 26, 0.9)';
+  g.fillRect(0, 0, W, H);
 
-    for (let hr = 0; hr <= 24; hr += 6) {
-      const y = 40 + (hr / 24) * (H - 70);
-      g.fillStyle = '#4a5378';
-      g.textAlign = 'left';
-      g.fillText(`${hr.toString().padStart(2, '0')}:00`, x + 6, y);
+  // ── Календарные полуночи и даты ──
+  const midnights = [];
+  const firstMid = startOfLocalDay(fromJulianDay(winStart));
+  for (
+    let d = new Date(firstMid.getTime());
+    toJulianDay(d) <= winEnd;
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+  ) {
+    midnights.push(d);
+  }
 
-      g.beginPath();
-      g.moveTo(x, y);
-      g.lineTo(x + colW, y);
-      g.strokeStyle = '#1b2138';
-      g.stroke();
+  // ── Сколько восходов в каждых календарных сутках ──
+  const riseCount = midnights.map(() => 0);
+  for (const iv of intervals) {
+    for (let i = 0; i < midnights.length - 1; i++) {
+      const jd0 = toJulianDay(midnights[i]);
+      const jd1 = toJulianDay(midnights[i + 1]);
+      if (iv.startJD >= jd0 && iv.startJD < jd1) {
+        riseCount[i]++;
+        break;
+      }
     }
   }
 
-  for (let i = 0; i < showCount; i++) {
-    const d = startDay + i;
-    const x = i * colW;
+  const jdNow = toJulianDay(new Date());
+  const todayIv = intervals.find((x) => jdNow >= x.startJD && jdNow < x.endJD);
 
-    const absoluteRise = baseMoonrise + (d - 1) * shiftPerDay;
-    const riseTimeOfDay = absoluteRise % 24;
-    const y = 40 + (riseTimeOfDay / 24) * (H - 70);
+  rows.forEach((iv, i) => {
+    const y = top + i * rowH;
+    const barH = rowH - 12;
+    const x0 = xOf(iv.startJD);
+    const x1 = xOf(iv.endJD);
+    const isSel = iv.day === selected.day;
+    const isToday = todayIv && todayIv.day === iv.day;
+    const durMin = Math.round((iv.endJD - iv.startJD) * 24 * 60);
+    const isNewMoonStart = Math.abs(iv.startJD - lun.nmPrev) < 1e-6;
+    const isNewMoonEnd = Math.abs(iv.endJD - lun.nmNext) < 1e-6;
+    const stepMin = iv.day > 1 && !isNewMoonEnd ? durMin - 1440 : null;
+    const standstill = stepMin !== null && Math.abs(stepMin) < 15;
 
-    g.fillStyle = '#f5a47f';
-    g.beginPath();
-    g.arc(x + colW / 2, y, 5, 0, Math.PI * 2);
-    g.fill();
+    g.fillStyle = isSel ? 'rgba(42, 49, 82, 0.55)' : 'rgba(20, 24, 40, 0.35)';
+    g.fillRect(0, y, W, rowH);
 
-    g.font = 'bold 10px sans-serif';
-    g.textAlign = 'left';
-    const rHH = Math.floor(riseTimeOfDay).toString().padStart(2, '0');
-    const rMM = Math.floor((riseTimeOfDay % 1) * 60).toString().padStart(2, '0');
-    g.fillText(
-      `${h.canvas_rise_prefix || 'Rise ~'}${rHH}:${rMM}`,
-      x + colW / 2 + 10,
-      y + 4,
-      colW / 2 - 14
-    );
+    g.fillStyle = isSel
+      ? (standstill ? 'rgba(127, 209, 174, 0.9)' : 'rgba(127, 156, 245, 0.9)')
+      : (standstill ? 'rgba(127, 209, 174, 0.35)' : 'rgba(127, 156, 245, 0.36)');
+    g.fillRect(x0, y + 4, Math.max(3, x1 - x0), barH);
 
-    if (i > 0) {
-      const prevD = d - 1;
-      const prevAbsoluteRise = baseMoonrise + (prevD - 1) * shiftPerDay;
-      const prevRiseTimeOfDay = prevAbsoluteRise % 24;
-      const prevY = 40 + (prevRiseTimeOfDay / 24) * (H - 70);
-      const prevX = (i - 1) * colW + colW / 2;
-
-      g.strokeStyle = 'rgba(245, 164, 127, 0.3)';
-      g.lineWidth = 2;
+    // Граница суток: восход (точка) или новолуние (ромб)
+    const markX = isNewMoonEnd ? x1 : x0;
+    if (isNewMoonStart || isNewMoonEnd) {
+      g.fillStyle = '#f5b73e';
       g.beginPath();
-      g.moveTo(prevX, prevY);
-      g.lineTo(x + colW / 2, y);
-      g.stroke();
+      g.moveTo(markX, y + 4 + barH / 2 - 5.5);
+      g.lineTo(markX + 5, y + 4 + barH / 2);
+      g.lineTo(markX, y + 4 + barH / 2 + 5.5);
+      g.lineTo(markX - 5, y + 4 + barH / 2);
+      g.closePath();
+      g.fill();
+      g.fillStyle = '#f5b73e';
+      g.font = '8.5px sans-serif';
+      g.textAlign = 'left';
+      g.fillText(h.days_new_moon || 'new moon', markX + 8, y + 4 + barH / 2 + 3);
+    } else {
+      g.fillStyle = isToday ? '#7fd1ae' : '#f5a47f';
+      g.beginPath();
+      g.arc(x0, y + 4 + barH / 2, 4.5, 0, Math.PI * 2);
+      g.fill();
+    }
 
-      if (prevRiseTimeOfDay > 20 && riseTimeOfDay < 4) {
-        g.setLineDash([3, 3]);
-        g.beginPath();
-        g.moveTo(prevX, prevY);
-        g.lineTo(prevX, H);
-        g.moveTo(x + colW / 2, 0);
-        g.lineTo(x + colW / 2, y);
-        g.stroke();
-        g.setLineDash([]);
+    g.fillStyle = isSel ? '#e8e9f0' : '#8b91a8';
+    g.font = '11px sans-serif';
+    g.textAlign = 'right';
+    g.fillText(String(iv.day), padL - 8, y + 4 + barH / 2 + 4);
+
+    g.fillStyle = isSel ? '#e8e9f0' : '#9aa0b5';
+    g.font = 'bold 10px sans-serif';
+    g.textAlign = 'right';
+    g.fillText(formatDurationMs(durMin * MS_PER_MIN), x1 - 5, y + 4 + barH / 2 + 3.5);
+
+    if (stepMin !== null) {
+      g.fillStyle = standstill ? '#7fd1ae' : '#f5a47f';
+      g.font = 'bold 9.5px sans-serif';
+      g.textAlign = 'left';
+      g.fillText(`${stepMin > 0 ? '+' : ''}${stepMin}`, x0 + 7, y + 4 + barH / 2 + 3.5);
+    }
+  });
+
+  // ── Сетка календаря ──
+  const axisTop = H - axisH;
+  midnights.forEach((d, i) => {
+    const x = xOf(toJulianDay(d));
+    g.strokeStyle = 'rgba(255,255,255,0.13)';
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(x, top - 8);
+    g.lineTo(x, axisTop + 4);
+    g.stroke();
+
+    g.fillStyle = '#8b91a8';
+    g.font = '10px sans-serif';
+    g.textAlign = 'center';
+    g.fillText(formatDateShort(d), x, axisTop + 18);
+
+    if (i < riseCount.length) {
+      if (riseCount[i] === 0) {
+        g.fillStyle = '#d9736a';
+        g.font = '9px sans-serif';
+        g.fillText(h.days_no_rise || 'no rise', x, axisTop + 32);
+      } else if (riseCount[i] >= 2) {
+        g.fillStyle = '#7fd1ae';
+        g.font = '9px sans-serif';
+        g.fillText(h.days_two_rises || '2 rises', x, axisTop + 32);
       }
     }
+  });
+
+  // ── Сегодня ──
+  if (jdNow > winStart && jdNow < winEnd) {
+    const x = xOf(jdNow);
+    g.strokeStyle = '#7fd1ae';
+    g.lineWidth = 1.5;
+    g.setLineDash([4, 3]);
+    g.beginPath();
+    g.moveTo(x, top - 8);
+    g.lineTo(x, axisTop + 4);
+    g.stroke();
+    g.setLineDash([]);
+
+    // Подпись «сегодня» — у нижнего края линии, чтобы не спорить с легендой
+    g.fillStyle = '#7fd1ae';
+    g.font = 'bold 9.5px sans-serif';
+    g.textAlign = 'center';
+    g.fillText(h.days_today || 'today', x, axisTop - 5);
+  }
+
+  // ── Условные обозначения ──
+  g.fillStyle = '#6b7190';
+  g.font = '9.5px sans-serif';
+  g.textAlign = 'left';
+  g.fillText(h.days_legend || 'bar = lunar day, dot = moonrise', padL, 14);
+}
+
+function updateLunarDayPanels(day) {
+  const h = hDict();
+  const intervals = lunarCycleIntervals();
+  let selIdx = intervals.findIndex((iv) => iv.day === day);
+  if (selIdx < 0) selIdx = 0;
+  const iv = intervals[selIdx];
+  const durMin = Math.round((iv.endJD - iv.startJD) * 24 * 60);
+  const prev = selIdx > 0 ? intervals[selIdx - 1] : null;
+  const stepMin = prev ? durMin - 1440 : null;
+  const sD = fromJulianDay(iv.startJD);
+  const eD = fromJulianDay(iv.endJD);
+
+  const summaryEl = document.getElementById('lunarDaySummary');
+  if (summaryEl) {
+    summaryEl.textContent =
+      `${h.days_summary_label || 'Lunar day'} ${iv.day}: ` +
+      `${h.days_from_label || 'from'} ${formatDateShort(sD)} ${formatClock(sD)} ` +
+      `${h.days_to_label || 'to'} ${formatDateShort(eD)} ${formatClock(eD)} · ` +
+      `${h.days_duration_label || 'duration'} ${formatDurationMs(durMin * MS_PER_MIN)}` +
+      (stepMin !== null
+        ? ` · ${h.days_step_label || 'shift per day'} ${formatSignedMinutes(stepMin)}`
+        : '');
+  }
+
+  const todayEl = document.getElementById('lunarDayToday');
+  if (todayEl) {
+    const jdNow = toJulianDay(new Date());
+    const cur =
+      intervals.find((x) => jdNow >= x.startJD && jdNow < x.endJD) ||
+      intervals[intervals.length - 1];
+    const cS = fromJulianDay(cur.startJD);
+    const cE = fromJulianDay(cur.endJD);
+    const isSel = cur.day === iv.day;
+    todayEl.textContent =
+      `${h.days_today_prefix || 'Today'}: ${h.days_summary_label || 'lunar day'} ${cur.day} ` +
+      `(${formatDateShort(cS)} ${formatClock(cS)} → ${formatDateShort(cE)} ${formatClock(cE)}). ` +
+      (isSel
+        ? (h.days_today_is_selected || 'This is the day shown above.')
+        : (h.days_today_other || 'Move the slider to it.'));
+  }
+
+  const explainEl = document.getElementById('lunarDayExplain');
+  if (explainEl) {
+    const lun = lunarCycle();
+    let minS = null;
+    let maxS = null;
+    let sum = 0;
+    let n = 0;
+    for (let i = 1; i < intervals.length; i++) {
+      // Последние сутки цикла заканчиваются новолунием, а не восходом — сдвиг для них не определён.
+      if (Math.abs(intervals[i].endJD - lun.nmNext) < 1e-6) continue;
+      const st = Math.round((intervals[i].endJD - intervals[i].startJD) * 24 * 60) - 1440;
+      sum += st;
+      n++;
+      if (minS === null || st < minS.min) minS = { min: st, day: intervals[i].day };
+      if (maxS === null || st > maxS.max) maxS = { max: st, day: intervals[i].day };
+    }
+    const avg = n ? sum / n : 0;
+    explainEl.textContent =
+      `${h.days_explain_label || 'Shift per day in this cycle'}: ` +
+      `${formatSignedMinutes(minS.min)} (${h.days_day_word || 'day'} ${minS.day}) … ` +
+      `${formatSignedMinutes(maxS.max)} (${h.days_day_word || 'day'} ${maxS.day}), ` +
+      `${h.days_explain_avg || 'average'} ${formatSignedMinutes(avg)}. ` +
+      `${h.days_explain_cause || 'The Moon moves around the Earth unevenly and its declination changes unevenly, so the shift is not constant.'}`;
   }
 }
 
@@ -1196,7 +1780,6 @@ function applyDictionaryLocalization() {
   if (todayBtn && h.btn_today) todayBtn.textContent = h.btn_today;
 
   const now = new Date();
-  const todaySummary = getCalendarDayLunarSummary(now, now);
   const coordPrefix = ctx.hasValidCoords ? (h.coords_manual || 'Coords') : (h.coords_auto || 'Auto TZ');
   const coordTag = `${coordPrefix}: ${ctx.coords.latDeg.toFixed(2)}°, ${ctx.coords.lonDeg.toFixed(2)}°`;
 
@@ -1207,18 +1790,8 @@ function applyDictionaryLocalization() {
       : `${coordTag} · ${h.guest_mode || 'Guest mode'}`;
   }
 
-  const horizonObsEl = document.getElementById('horizonObserverInfo');
-  if (horizonObsEl && todaySummary) {
-    const liveDetails = getHorizonDayDetails(now);
-    const moonWord = h.canvas_moon || 'Moon';
-    const sunWord = h.horizon_sun_label || 'Sun';
-    const riseW = h.horizon_rise_word || 'rise';
-    const setW = h.horizon_set_word || 'set';
-    horizonObsEl.textContent =
-      `${h.horizon_today_prefix || 'Today'} (${coordTag}): ` +
-      `${moonWord} — ${riseW} ${liveDetails.moonriseStr}, ${setW} ${liveDetails.moonsetStr}; ` +
-      `${sunWord} — ${riseW} ${liveDetails.sunriseStr}, ${setW} ${liveDetails.sunsetStr}.`;
-  }
+  updateHorizonPanels();
+  updateLunarDayPanels(+daySlider.value || currentLunarDayNumber());
 
   const personalNoteEl = document.getElementById('personalContextNote');
   const birthALabelEl = document.getElementById('birthALabel');
@@ -1285,6 +1858,7 @@ async function loadCustomDictOverride() {
     updateUI(currentElong, false);
     drawPersonal();
     drawLunarDays(+daySlider.value || 1);
+    updateLunarDayPanels(+daySlider.value || currentLunarDayNumber());
   }
 }
 
@@ -1308,16 +1882,23 @@ async function loadCustomDictOverride() {
   birthASlider.value = Math.min(29.5, Math.max(0, ctx.birthMoonAge)).toFixed(1);
   birthBSlider.value = Math.min(29.5, Math.max(0, antiphaseMoonAge)).toFixed(1);
 
-  horizonIsLiveToday = true;
+  horizonDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   setTimeSliderHour(now.getHours() + now.getMinutes() / 60);
+  const horizonDateInputEl = document.getElementById('horizonDateInput');
+  if (horizonDateInputEl) {
+    horizonDateInputEl.value =
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
 
   daySlider.value = String(currentLunarDay);
   dayVal.textContent = String(currentLunarDay);
 
   applyDictionaryLocalization();
+  setHorizonDate(horizonDate);
   updateUI(nowInfo.elong, false);
   drawPersonal();
   drawLunarDays(currentLunarDay);
+  updateLunarDayPanels(currentLunarDay);
 
   void loadCustomDictOverride();
 })();
