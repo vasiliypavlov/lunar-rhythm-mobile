@@ -110,8 +110,17 @@
       <section id="tab-reminders" class="tab-panel" aria-label="Напоминания">
         <div class="section-top-bar">
           <h2 class="panel-heading" data-i18n="reminders_heading">Лунный будильник</h2>
-          <button id="btn-toggle-reminder-form" class="btn-secondary-compact" type="button">+ Добавить напоминание</button>
         </div>
+
+        <div class="reminders-actions-bar">
+          <button id="btn-export-reminders" class="btn-secondary-compact" type="button" data-i18n="btn_export_reminders">Сохранить</button>
+          <label class="btn-secondary-compact file-upload-label">
+            <span data-i18n="btn_import_reminders">Загрузить</span>
+            <input type="file" id="input-import-reminders" accept=".ics,text/calendar,.json,application/json" hidden />
+          </label>
+          <button id="btn-toggle-reminder-form" class="btn-primary-compact" type="button">+ Добавить</button>
+        </div>
+        <p id="reminders-status-msg" class="status-feedback hidden"></p>
 
         <form id="reminder-form" class="surface-card form-card hidden">
           <div class="segmented-control" role="tablist">
@@ -271,6 +280,12 @@
             <button type="button" id="btn-copy-raw-data" class="btn-ghost-compact raw-data-btn" data-i18n="btn_copy_raw_data">Скопировать Raw Data (JSON)</button>
           </div>
           <p id="dict-status-msg" class="status-feedback hidden"></p>
+        </div>
+
+        <div class="surface-card settings-card">
+          <h2 class="card-title" data-i18n="settings_help_title">Справка и теория</h2>
+          <p class="card-desc" data-i18n="settings_help_desc">Интерактивные схемы: орбита и фазы, восход и заход Луны, расхождение лунных суток, личный ритм и научная оговорка.</p>
+          <button type="button" id="btn-open-help" class="btn-secondary-compact help-open-btn" data-i18n="btn_open_help">Открыть справку</button>
         </div>
       </section>
     </main>

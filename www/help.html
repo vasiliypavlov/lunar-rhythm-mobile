@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Динамический справочник · Lunar Rhythm Navigator</title>
+<style>
+  :root {
+    --bg: #0b0e1a;
+    --card: #141828;
+    --card2: #1b2138;
+    --text: #e8e9f0;
+    --dim: #9aa0b5;
+    --accent: #e8e6d8;
+    --gold: #eab32e;
+    --blue: #7f9cf5;
+    --orange: #f5a47f;
+    --border: #262c45;
+    --radius: 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55;
+    padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
+  }
+  .wrap { max-width: 540px; margin: 0 auto; }
+
+  h1 {
+    font-size: 20px;
+    line-height: 1.25;
+    margin-bottom: 12px;
+    letter-spacing: -0.01em;
+  }
+
+  /* вкладки + тонкий скролл-бар */
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(127, 156, 245, 0.35) transparent;
+  }
+  .tabs::-webkit-scrollbar {
+    height: 4px;
+  }
+  .tabs::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .tabs::-webkit-scrollbar-thumb {
+    background: rgba(127, 156, 245, 0.35);
+    border-radius: 999px;
+  }
+  .tabs::-webkit-scrollbar-thumb:hover {
+    background: rgba(127, 156, 245, 0.55);
+  }
+  .tab {
+    flex: 0 0 auto; padding: 8px 14px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--card);
+    color: var(--dim); font-size: 13px; cursor: pointer;
+    white-space: nowrap; transition: background .15s, color .15s;
+  }
+  .tab.active { background: var(--card2); color: var(--text); border-color: #3a4466; }
+  .tab:hover { background: var(--card2); }
+
+  section { display: none; }
+  section.active { display: block; animation: fade .2s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+  }
+  .card h2 { font-size: 17px; margin-bottom: 10px; }
+  .card p, .card li { font-size: 13.5px; color: var(--dim); }
+
+  canvas { display: block; width: 100%; height: auto; border-radius: var(--radius); background: #0d1122; }
+
+  /* Информация о фазе под графиком орбиты */
+  .phase-info-panel {
+    margin-top: 12px;
+    background: #101526;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .phase-info-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .phase-info-title {
+    font-weight: 700;
+    color: var(--text);
+    font-size: 14.5px;
+    line-height: 1.25;
+  }
+  .phase-info-sky {
+    color: var(--dim);
+    font-size: 12.5px;
+    line-height: 1.35;
+    min-height: 2.7em;
+  }
+  .phase-info-metrics {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+    gap: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .phase-metric-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .phase-metric-label {
+    font-size: 11.5px;
+    color: var(--dim);
+    line-height: 1.25;
+  }
+  .phase-metric-val {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+
+  /* контролы */
+  .ctrl-group { margin: 12px 0; }
+  .ctrl-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); margin-bottom: 4px; gap: 8px; }
+  .ctrl-label span { color: var(--text); font-weight: 600; }
+
+  input[type="range"] {
+    width: 100%; height: 36px;
+    -webkit-appearance: none; appearance: none; background: transparent;
+  }
+  input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: #2a3152; }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 24px; height: 24px; margin-top: -9px; border-radius: 50%;
+    border: 2px solid #f0eeda;
+    background: radial-gradient(circle at 35% 35%, #f5f3e6, #b9b6a2);
+    box-shadow: 0 0 10px rgba(232,230,216,.35); cursor: pointer;
+  }
+  input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: #2a3152; }
+  input[type="range"]::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid #f0eeda;
+    background: radial-gradient(circle at 35% 35%, #f5f3e6, #b9b6a2); cursor: pointer;
+  }
+
+  .btn-row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+  .btn {
+    flex: 1 1 auto; min-height: 44px; padding: 10px 12px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--card);
+    color: var(--text); font-size: 13px; cursor: pointer;
+    text-align: center; white-space: nowrap;
+  }
+  .btn:active { background: var(--card2); }
+  .btn.primary { background: #232c4e; border-color: #35406b; }
+
+  .tip {
+    border-left: 3px solid var(--accent);
+    background: var(--card); border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 12px 14px; font-size: 13px; color: var(--dim);
+    margin-bottom: 14px;
+  }
+  .tip b { color: var(--text); }
+
+  .mini { font-size: 11.5px; color: #8b92b2; margin-top: 8px; line-height: 1.45; }
+
+  /* Личный ритм */
+  .legend { display: flex; gap: 12px; font-size: 11px; margin-top: 10px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 4px; color: var(--dim); }
+  .legend-color { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* Профили ритма и Наука */
+  .badge-tag {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+  .badge-tag.ok {
+    background: rgba(91, 141, 239, 0.16);
+    color: #8ab4ff;
+    border: 1px solid rgba(91, 141, 239, 0.3);
+  }
+  .badge-tag.myth {
+    background: rgba(234, 179, 46, 0.12);
+    color: var(--gold);
+    border: 1px solid rgba(234, 179, 46, 0.28);
+  }
+  .profile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .profile-card {
+    background: #101526;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color .15s, background .15s;
+  }
+  .profile-card.is-user-profile {
+    border-color: var(--gold);
+    background: rgba(234, 179, 46, 0.07);
+  }
+  .profile-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .profile-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .profile-moon-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    border: 1.5px solid #4a5378;
+    background: #141828;
+  }
+  .profile-moon-dot.waxing {
+    background: linear-gradient(90deg, #141828 50%, var(--accent) 50%);
+  }
+  .profile-moon-dot.full {
+    background: var(--accent);
+    border-color: var(--gold);
+  }
+  .profile-moon-dot.waning {
+    background: linear-gradient(90deg, var(--accent) 50%, #141828 50%);
+  }
+  .profile-name {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .profile-you-badge {
+    display: none;
+    font-size: 10px;
+    font-weight: 700;
+    color: #0b0e1a;
+    background: var(--gold);
+    border-radius: 4px;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+  .profile-card.is-user-profile .profile-you-badge {
+    display: inline-block;
+  }
+  .profile-range {
+    font-size: 11px;
+    color: #8ab4ff;
+    background: rgba(91, 141, 239, 0.12);
+    border: 1px solid rgba(91, 141, 239, 0.25);
+    border-radius: 6px;
+    padding: 3px 7px;
+    align-self: flex-start;
+    font-weight: 600;
+  }
+  .profile-desc {
+    font-size: 12.5px;
+    color: var(--dim);
+    line-height: 1.45;
+  }
+  .mode-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 10px;
+  }
+  .mode-chip {
+    font-size: 11.5px;
+    color: var(--text);
+    background: #101526;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+  }
+  .science-list {
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .practice-steps {
+    list-style: none;
+    padding-left: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .practice-step {
+    background: #101526;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 11px 13px;
+    font-size: 13px;
+    color: var(--dim);
+    line-height: 1.48;
+  }
+  .practice-step-title {
+    display: block;
+    color: var(--text);
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-size: 13.5px;
+  }
+
+  /* Нижняя панель с возвратом и контекстом */
+  .help-footer {
+    margin-top: 6px;
+    padding-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .footer-note {
+    font-size: 12px;
+    color: var(--dim);
+    line-height: 1.45;
+  }
+  .back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 46px;
+    padding: 0 16px;
+    border-radius: 12px;
+    border: 1px solid #35406b;
+    background: #1b2138;
+    color: var(--gold);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .back-btn:hover,
+  .back-btn:active {
+    background: #232c4e;
+    border-color: var(--gold);
+  }
+  .context-meta {
+    font-size: 11.5px;
+    color: #6b7190;
+    text-align: center;
+    line-height: 1.4;
+    padding-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1 id="help-main-title">Lunar Rhythm Navigator</h1>
+
+  <div class="tabs" id="tabs">
+    <button type="button" class="tab active" data-tab="orbital" data-i18n="tab_orbital">Орбита и фазы</button>
+    <button type="button" class="tab" data-tab="horizon" data-i18n="tab_horizon">Восход и заход</button>
+    <button type="button" class="tab" data-tab="days" data-i18n="tab_days">Лунные сутки</button>
+    <button type="button" class="tab" data-tab="personal" data-i18n="tab_personal">Личный ритм</button>
+    <button type="button" class="tab" data-tab="profiles" data-i18n="tab_profiles">Профили ритма</button>
+    <button type="button" class="tab" data-tab="science" data-i18n="tab_science">Наука</button>
+  </div>
+
+  <!-- ═══════════ ОРБИТА ═══════════ -->
+  <section id="orbital" class="active">
+    <div class="card" style="padding-bottom:12px">
+      <h2 data-i18n="orbital_title">Геометрия системы</h2>
+      <p style="margin-bottom:12px" data-i18n="orbital_desc">Солнце неподвижно слева. Земля в центре. Луна обращается против часовой стрелки. Элонгация — угол между направлениями на Солнце и Луну.</p>
+
+      <canvas id="orbitalCanvas" width="500" height="280"></canvas>
+
+      <div class="phase-info-panel">
+        <div class="phase-info-head">
+          <div class="phase-info-title" id="phName">—</div>
+          <div class="phase-info-sky" id="phSky">—</div>
+        </div>
+        <div class="phase-info-metrics">
+          <div class="phase-metric-row">
+            <span class="phase-metric-label" id="lbl-illum" data-i18n="label_illum">Освещённость:</span>
+            <span class="phase-metric-val" id="phIllum">—</span>
+          </div>
+          <div class="phase-metric-row">
+            <span class="phase-metric-label" id="lbl-trend" data-i18n="label_trend">Тренд:</span>
+            <span class="phase-metric-val" id="phTrend">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label"><span data-i18n="label_elongation">Элонгация (Угол)</span><span id="elongVal">0°</span></div>
+        <input type="range" id="elongSlider" min="0" max="360" step="1" value="0">
+      </div>
+
+      <div class="btn-row">
+        <button type="button" class="btn primary" id="cycleBtn">▶ Анимация цикла</button>
+        <button type="button" class="btn" id="todayBtn" data-i18n="btn_today">Сегодня</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ ГОРИЗОНТ ═══════════ -->
+  <section id="horizon">
+    <div class="card" style="padding-bottom:10px">
+      <h2 data-i18n="horizon_title">Вид с Земли (Северное полушарие)</h2>
+      <p style="margin-bottom:12px" data-i18n="horizon_desc">Двигайте время суток, чтобы увидеть, как Луна восходит на востоке (слева), проходит над югом и заходит на западе (справа).</p>
+
+      <canvas id="horizonCanvas" width="500" height="390"></canvas>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label"><span data-i18n="label_time_of_day">Время суток</span><span id="timeVal">12:00</span></div>
+        <input type="range" id="timeSlider" min="0" max="24" step="0.1" value="12">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label"><span data-i18n="label_phase_angle">Фаза (Элонгация)</span><span id="phaseValHorizon">0°</span></div>
+        <input type="range" id="phaseSliderHorizon" min="0" max="360" step="1" value="0">
+      </div>
+
+      <p id="horizonObserverInfo" class="mini" style="margin-bottom:10px"></p>
+
+      <div class="tip" id="horizonTip" data-i18n="horizon_tip">
+        Луна восходит и заходит каждый день, но время меняется. При элонгации 0° (новолуние) она восходит вместе с Солнцем и не видна. При 180° (полнолуние) — восходит на закате.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ ЛУННЫЕ СУТКИ ═══════════ -->
+  <section id="days">
+    <div class="card">
+      <h2 data-i18n="days_title">Расхождение календарных и лунных суток</h2>
+      <p data-i18n="days_desc">Каждый день Луна восходит примерно на 50 минут позже. Из-за этого лунные сутки (от восхода до восхода) не совпадают с календарными (от полуночи до полуночи). 1-е сутки начинаются в новолуние и длятся до первого восхода Луны, поэтому бывают короткими, а остальные идут от восхода до восхода (~24 ч 50 мин).</p>
+    </div>
+
+    <div class="card" style="padding-bottom:10px">
+      <canvas id="lunarDayCanvas" width="500" height="240"></canvas>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label"><span data-i18n="label_cycle_day">День цикла (от новолуния)</span><span id="dayVal">1</span></div>
+        <input type="range" id="daySlider" min="1" max="29" step="1" value="1">
+      </div>
+
+      <p class="mini" data-i18n="days_hint">Сдвиньте ползунок к 22–23 дню, чтобы увидеть, как восход «перескакивает» через полночь. В такие моменты в одни календарные сутки может не быть ни одного восхода, либо их будет два.</p>
+    </div>
+  </section>
+
+  <!-- ═══════════ ЛИЧНЫЙ РИТМ ═══════════ -->
+  <section id="personal">
+    <div class="card">
+      <h2 data-i18n="personal_title">Две точки отсчёта</h2>
+      <p data-i18n="personal_desc">Луна на небе одна для всех, но дата рождения задаёт индивидуальный сдвиг в 29,5-дневном цикле. Ниже — две синусоиды: для вашей даты рождения и человека в противофазе.</p>
+      <p id="personalContextNote" class="mini"></p>
+    </div>
+
+    <div class="card" style="padding-bottom:10px">
+      <canvas id="personalCanvas" width="500" height="280"></canvas>
+
+      <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background:#b33939"></div><span data-phase-badge="phase_minimum">Минимум</span></div>
+        <div class="legend-item"><div class="legend-color" style="background:#b8860b"></div><span data-phase-badge="phase_rise">Разгон</span></div>
+        <div class="legend-item"><div class="legend-color" style="background:#2e8b57"></div><span data-phase-badge="phase_peak">Пик</span></div>
+        <div class="legend-item"><div class="legend-color" style="background:#4169e1"></div><span data-phase-badge="phase_decline">Спад</span></div>
+      </div>
+
+      <div class="ctrl-group" style="margin-top:16px">
+        <div class="ctrl-label"><span data-i18n="label_current_cycle_day">Текущий день цикла</span><span id="currentDayVal">15.0</span></div>
+        <input type="range" id="currentDaySlider" min="0" max="29.5" step="0.1" value="15.0">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label"><span id="birthALabel" style="color:#f5a47f">Пользователь А (возраст Луны при рождении)</span><span id="birthAVal">5.0 дн</span></div>
+        <input type="range" id="birthASlider" min="0" max="29.5" step="0.1" value="5.0">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label"><span id="birthBLabel" style="color:#7f9cf5">Пользователь Б (противофаза)</span><span id="birthBVal">19.8 дн</span></div>
+        <input type="range" id="birthBSlider" min="0" max="29.5" step="0.1" value="19.8">
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ ПРОФИЛИ РИТМА ═══════════ -->
+  <section id="profiles">
+    <div class="card">
+      <h2 data-i18n="profiles_title">4 базовых профиля ритма</h2>
+      <p data-i18n="profiles_desc">На основе натального возраста Луны (фазы в день рождения) движок относит пользователя к одному из четырёх базовых профилей ритма:</p>
+      <div class="profile-grid">
+        <div class="profile-card" data-profile="profile_async">
+          <div class="profile-card-head">
+            <div class="profile-title-wrap">
+              <span class="profile-moon-dot" aria-hidden="true"></span>
+              <span class="profile-name" data-profile-title>Интровертный ритм</span>
+            </div>
+            <span class="profile-you-badge" data-i18n="your_profile_badge">Ваш профиль</span>
+          </div>
+          <span class="profile-range" data-i18n="profile_range_async">≤ 3,7 или ≥ 25,8 дн. (Новолуние)</span>
+          <p class="profile-desc" data-profile-desc>Ваша максимальная продуктивность приходится на фазу обновления цикла, когда внешний информационный шум минимален.</p>
+        </div>
+
+        <div class="profile-card" data-profile="profile_waxing">
+          <div class="profile-card-head">
+            <div class="profile-title-wrap">
+              <span class="profile-moon-dot waxing" aria-hidden="true"></span>
+              <span class="profile-name" data-profile-title>Ритм накопления</span>
+            </div>
+            <span class="profile-you-badge" data-i18n="your_profile_badge">Ваш профиль</span>
+          </div>
+          <span class="profile-range" data-i18n="profile_range_waxing">3,7 – 11,1 дн. (Растущая Луна)</span>
+          <p class="profile-desc" data-profile-desc>Вы набираете максимальную эффективность в первой половине цикла, последовательно наращивая темп и ресурсы.</p>
+        </div>
+
+        <div class="profile-card" data-profile="profile_sync">
+          <div class="profile-card-head">
+            <div class="profile-title-wrap">
+              <span class="profile-moon-dot full" aria-hidden="true"></span>
+              <span class="profile-name" data-profile-title>Экстравертный ритм</span>
+            </div>
+            <span class="profile-you-badge" data-i18n="your_profile_badge">Ваш профиль</span>
+          </div>
+          <span class="profile-range" data-i18n="profile_range_sync">11,1 – 18,5 дн. (Полнолуние)</span>
+          <p class="profile-desc" data-profile-desc>Ваша личная активность совпадает с общим пиком цикла. Это даёт максимум сил для публичных и масштабных задач.</p>
+        </div>
+
+        <div class="profile-card" data-profile="profile_waning">
+          <div class="profile-card-head">
+            <div class="profile-title-wrap">
+              <span class="profile-moon-dot waning" aria-hidden="true"></span>
+              <span class="profile-name" data-profile-title>Ритм оптимизации</span>
+            </div>
+            <span class="profile-you-badge" data-i18n="your_profile_badge">Ваш профиль</span>
+          </div>
+          <span class="profile-range" data-i18n="profile_range_waning">&gt; 18,5 дн. (Убывающая Луна)</span>
+          <p class="profile-desc" data-profile-desc>Наибольшую ясность и эффективность вы проявляете во второй половине цикла, когда приходит время структурировать результаты.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="modes_title">5 прикладных дневных режимов</h2>
+      <p data-i18n="modes_desc">Для оценки повседневного фона общения и задач движок учитывает аспекты транзитных планет и переводит их в пять сценариев дня:</p>
+      <div class="mode-chips">
+        <span class="mode-chip" data-role="role_agile">Режим спринта</span>
+        <span class="mode-chip" data-role="role_drive">Режим прорыва</span>
+        <span class="mode-chip" data-role="role_diplomat">Режим диалога</span>
+        <span class="mode-chip" data-role="role_heavy">Режим высокой ответственности</span>
+        <span class="mode-chip" data-role="role_autonomous">Автономный режим</span>
+      </div>
+      <p data-i18n="modes_decay_note">В алгоритме заложена 2-дневная история затухания и штраф за повторы, чтобы подсказки не «залипали» на одном режиме несколько дней подряд, а помогали гибко переключать фокус внимания.</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="practice_title">Как практически работать с Луной, имея это приложение</h2>
+      <ul class="practice-steps">
+        <li class="practice-step">
+          <span class="practice-step-title" data-i18n="practice_step1_title">1. Разделяйте «фон неба» и «личный цикл»</span>
+          <span data-i18n="practice_step1_body">По фазе на небе оценивайте внешний фон и свой сон: за 3–5 дней до полнолуния бережнее относитесь к вечерней гигиене сна (приглушайте свет, убирайте поздний кофеин и экранную нагрузку). По личной фазе (Разгон → Пик → Спад → Минимум) распределяйте сложность задач: старты и прорывы — на Разгон и Пик; рутину, редактуру и закрытие хвостов — на Спад; восстановление и минимум обязательств — на Минимум.</span>
+        </li>
+        <li class="practice-step">
+          <span class="practice-step-title" data-i18n="practice_step2_title">2. Используйте срез лунных суток по времени дня</span>
+          <span data-i18n="practice_step2_body">Не ориентируйтесь на «номер лунного дня» вслепую — смотрите на время перехода (восход Луны) и на то, какие сутки действуют в нужное вам окно (09:00, 14:00, 20:00). Учитывайте координаты наблюдателя: по умолчанию координаты определяются по часовому поясу без GPS, а точные широту и долготу можно задать в настройках.</span>
+        </li>
+        <li class="practice-step">
+          <span class="practice-step-title" data-i18n="practice_step3_title">3. Калибруйте модель под себя за 1–2 месяца</span>
+          <span data-i18n="practice_step3_body">Приложение даёт структурированную гипотезу ритма, а не жёсткий закон. Отмечайте в течение одного-двух лунных месяцев дни высокой ясности, спада энергии и качества сна — так вы увидите, какие фазы и подсказки точнее всего совпадают с вашим реальным графиком.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ═══════════ НАУКА ═══════════ -->
+  <section id="science">
+    <div class="card">
+      <span class="badge-tag ok" data-i18n="science_ok_badge">Подтверждено исследованиями</span>
+      <h2 data-i18n="science_light_title">Ночной свет и циркадные ритмы</h2>
+      <p data-i18n="science_light_intro">До появления электричества лунный свет был единственным ярким ночным источником света. Физиология реагирует именно на освещённость:</p>
+      <ul class="science-list">
+        <li data-i18n="science_light_p1">За 3–5 ночей до полнолуния яркая Луна светит вечером сразу после заката, сдвигая время засыпания на более позднее.</li>
+        <li data-i18n="science_light_p2">Наблюдается сокращение сна в среднем на 20–25 минут и снижение доли глубокого сна (в городе эффект нередко маскируется искусственным светом и экранами).</li>
+      </ul>
+      <p class="mini" data-i18n="science_light_sources">Источники: Casiraghi et al., Science Advances (2021); Cajochen et al., Current Biology (2013).</p>
+    </div>
+
+    <div class="card">
+      <span class="badge-tag myth" data-i18n="science_myth_badge">Распространённый миф</span>
+      <h2 data-i18n="science_gravity_title">Гравитация и «приливы в организме»</h2>
+      <ul class="science-list">
+        <li data-i18n="science_gravity_p1">Приливы в Мировом океане возникают только из-за огромной протяжённости водных масс в масштабе планеты.</li>
+        <li data-i18n="science_gravity_p2">В масштабе тела человека гравитационный градиент Луны ничтожен — слабее притяжения рядом стоящего здания или автомобиля.</li>
+      </ul>
+      <p style="margin-top:8px" data-i18n="science_gravity_conclusion">Вывод: физический фактор — свет и режим сна, а не «притяжение воды».</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="science_disclaimer_title">Честная оговорка о дате рождения</h2>
+      <p data-i18n="science_disclaimer_body">В современной биологии нет доказательств, что фаза Луны в день рождения физически программирует гормональные или энергетические циклы взрослого человека. В этом приложении дата рождения — прикладной инструмент самоорганизации (персональная точка отсчёта в 29,5-дневном ритме), а не физический закон.</p>
+    </div>
+  </section>
+
+  <footer class="help-footer">
+    <p id="help-lead" class="footer-note" data-i18n="footer_lead">Динамическая физика неба: вкладки выше показывают реальную механику движения Луны по орбите и относительно горизонта.</p>
+    <a id="btn-back-to-app" class="back-btn" href="index.html#settings" data-i18n="back_btn">← Вернуться в приложение</a>
+    <div id="help-context-meta" class="context-meta"></div>
+  </footer>
+
+</div>
+
+<script type="module" src="help.js"></script>
+</body>
+</html>

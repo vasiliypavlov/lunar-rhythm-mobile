@@ -3271,6 +3271,333 @@ function updateCalendarDateCalcPreview() {
     `${summary.activeLunarDay} ${labels.lunar_day_full} (${signName}, ${summary.phaseInfo.illuminationExact.toFixed(1)}%)${phasePart}`;
 }
 
+function formatIcsUtc(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const pad = n => String(n).padStart(2, '0');
+  return (
+    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}` +
+    `T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`
+  );
+}
+
+function escapeIcsText(str) {
+  return String(str ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\r\n|\r|\n/g, '\\n')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,');
+}
+
+function unescapeIcsText(str) {
+  return String(str ?? '')
+    .replace(/\\n/gi, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\');
+}
+
+function foldIcsLine(line) {
+  const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+  const chunks = [];
+  let current = '';
+  let currentBytes = 0;
+  for (const ch of String(line)) {
+    const chBytes = encoder ? encoder.encode(ch).length : (ch.charCodeAt(0) > 127 ? 2 : 1);
+    if (current && currentBytes + chBytes > 72) {
+      chunks.push(current);
+      current = ` ${ch}`;
+      currentBytes = 1 + chBytes;
+    } else {
+      current += ch;
+      currentBytes += chBytes;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.join('\r\n');
+}
+
+function parseIcsDateValue(raw) {
+  const val = String(raw || '').trim();
+  const dtMatch = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/.exec(val);
+  if (dtMatch) {
+    const y = Number(dtMatch[1]);
+    const m = Number(dtMatch[2]) - 1;
+    const d = Number(dtMatch[3]);
+    const hh = Number(dtMatch[4]);
+    const mm = Number(dtMatch[5]);
+    const ss = Number(dtMatch[6]);
+    const dt = dtMatch[7] === 'Z'
+      ? new Date(Date.UTC(y, m, d, hh, mm, ss))
+      : new Date(y, m, d, hh, mm, ss);
+    return Number.isNaN(dt.getTime()) ? null : { date: dt, hasTime: true };
+  }
+  const dMatch = /^(\d{4})(\d{2})(\d{2})$/.exec(val);
+  if (dMatch) {
+    const y = Number(dMatch[1]);
+    const m = Number(dMatch[2]) - 1;
+    const d = Number(dMatch[3]);
+    const dt = new Date(y, m, d, 9, 0, 0, 0);
+    return Number.isNaN(dt.getTime()) ? null : { date: dt, hasTime: false };
+  }
+  return null;
+}
+
+function reminderDedupeKey(rem) {
+  const textKey = String(rem?.text || '').trim().toLowerCase();
+  if (rem?.mode === 'lunar') {
+    return `lunar|${Number(rem.lunarDay) || 1}|${rem.repeatMonthly ? 1 : 0}|${textKey}`;
+  }
+  return `date|${String(rem?.dateISO || '')}|${textKey}`;
+}
+
+function buildRemindersIcs(reminders, dict) {
+  const labels = getUILabels(dict);
+  const now = new Date();
+  const stamp = formatIcsUtc(now);
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Lunar Rhythm Navigator//Lunar Alarm//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${escapeIcsText(labels.reminders_heading || 'Lunar Alarm')}`
+  ];
+
+  reminders.forEach((rem, rIdx) => {
+    if (!rem || !String(rem.text || '').trim()) return;
+    const text = String(rem.text).trim();
+    const mode = rem.mode === 'date' ? 'date' : 'lunar';
+    const repeatMonthly = mode === 'lunar' && Boolean(rem.repeatMonthly);
+    const enabled = rem.enabled !== false;
+    const groupId = String(rem.id || `rem_${Date.now()}_${rIdx}`);
+    let lunarDay = Number(rem.lunarDay) || 1;
+
+    const occurrences = [];
+    if (mode === 'lunar') {
+      const count = repeatMonthly ? 12 : 1;
+      let cursor = new Date(now.getTime());
+      for (let i = 0; i < count; i++) {
+        let occ;
+        if (!repeatMonthly && rem.nextTriggerAt && rem.nextTriggerAt > now.getTime()) {
+          occ = new Date(rem.nextTriggerAt);
+        } else {
+          occ = findNextDateForLunarDay(lunarDay, cursor);
+        }
+        occurrences.push(occ);
+        cursor = new Date(occ.getTime() + 5 * 86400000);
+      }
+    } else {
+      const parsed = rem.dateISO ? parseBirthDateString(rem.dateISO) : null;
+      const targetAt = parsed
+        ? new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 9, 0, 0, 0)
+        : (rem.nextTriggerAt ? new Date(rem.nextTriggerAt) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0, 0, 0));
+      if (!Number(rem.lunarDay)) {
+        lunarDay = getCalendarDayLunarSummary(targetAt, targetAt).activeLunarDay;
+      }
+      occurrences.push(targetAt);
+    }
+
+    const desc =
+      mode === 'lunar'
+        ? `${lunarDay} ${labels.lunar_day_full}${repeatMonthly ? ` (${labels.label_every_month})` : ''} · Lunar Rhythm Navigator`
+        : `${rem.dateISO || toISODate(occurrences[0])} (${lunarDay} ${labels.lunar_day_short}) · Lunar Rhythm Navigator`;
+
+    occurrences.forEach((occ, idx) => {
+      const endDt = new Date(occ.getTime() + 3600000);
+      lines.push('BEGIN:VEVENT');
+      lines.push(`UID:${groupId}-${idx}@lunar-rhythm.local`);
+      lines.push(`DTSTAMP:${stamp}`);
+      lines.push(`DTSTART:${formatIcsUtc(occ)}`);
+      lines.push(`DTEND:${formatIcsUtc(endDt)}`);
+      lines.push(`SUMMARY:${escapeIcsText(text)}`);
+      lines.push(`DESCRIPTION:${escapeIcsText(desc)}`);
+      lines.push('CATEGORIES:LUNAR-RHYTHM');
+      lines.push(`X-LUNAR-RHYTHM-ID:${escapeIcsText(groupId)}`);
+      lines.push(`X-LUNAR-MODE:${mode}`);
+      lines.push(`X-LUNAR-DAY:${lunarDay}`);
+      lines.push(`X-LUNAR-REPEAT:${repeatMonthly ? '1' : '0'}`);
+      lines.push(`X-LUNAR-ENABLED:${enabled ? '1' : '0'}`);
+      if (mode === 'date' && rem.dateISO) {
+        lines.push(`X-LUNAR-DATE:${rem.dateISO}`);
+      }
+      lines.push('BEGIN:VALARM');
+      lines.push('ACTION:DISPLAY');
+      lines.push(`DESCRIPTION:${escapeIcsText(text)}`);
+      lines.push('TRIGGER:-PT0M');
+      lines.push('END:VALARM');
+      lines.push('END:VEVENT');
+    });
+  });
+
+  lines.push('END:VCALENDAR');
+  return lines.map(foldIcsLine).join('\r\n') + '\r\n';
+}
+
+function parseRemindersImportText(rawText) {
+  const cleaned = String(rawText || '').replace(/^\uFEFF/, '');
+  const trimmed = cleaned.trim();
+  if (!trimmed) {
+    throw new Error('Empty file');
+  }
+
+  // 1. iCalendar (.ics)
+  if (/BEGIN:VCALENDAR/i.test(trimmed) || /BEGIN:VEVENT/i.test(trimmed)) {
+    const unfolded = cleaned.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
+    const rawLines = unfolded.split(/\r?\n/);
+    const imported = [];
+    const seenGroups = new Set();
+    let inEvent = false;
+    let inAlarm = false;
+    let props = null;
+    const now = new Date();
+
+    for (const rawLine of rawLines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      const upper = line.toUpperCase();
+      if (upper === 'BEGIN:VEVENT') {
+        inEvent = true;
+        inAlarm = false;
+        props = {};
+        continue;
+      }
+      if (upper === 'END:VEVENT') {
+        if (inEvent && props) {
+          const text = String(props['SUMMARY'] || props['DESCRIPTION'] || '').trim();
+          if (text) {
+            const xMode = String(props['X-LUNAR-MODE'] || '').trim().toLowerCase();
+            const xDay = Number(props['X-LUNAR-DAY']);
+            const xRepeat = props['X-LUNAR-REPEAT'] === '1' || String(props['X-LUNAR-REPEAT'] || '').toLowerCase() === 'true';
+            const xEnabled = props['X-LUNAR-ENABLED'] === '0' || String(props['X-LUNAR-ENABLED'] || '').toLowerCase() === 'false' ? false : true;
+            const xGroupId = String(props['X-LUNAR-RHYTHM-ID'] || '').trim();
+
+            if (xMode === 'lunar' && Number.isInteger(xDay) && xDay >= 1 && xDay <= 30) {
+              const groupKey = xGroupId || `lunar|${xDay}|${xRepeat ? 1 : 0}|${text.toLowerCase()}`;
+              if (!seenGroups.has(groupKey)) {
+                seenGroups.add(groupKey);
+                const nextDate = findNextDateForLunarDay(xDay, now);
+                imported.push({
+                  id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                  mode: 'lunar',
+                  lunarDay: xDay,
+                  dateISO: toISODate(nextDate),
+                  text,
+                  repeatMonthly: xRepeat,
+                  enabled: xEnabled,
+                  nextTriggerAt: nextDate.getTime()
+                });
+              }
+            } else {
+              const dtParsed = parseIcsDateValue(props['DTSTART']);
+              const dateISO = parseDisplayOrIsoDate(props['X-LUNAR-DATE'] || '') || (dtParsed ? toISODate(dtParsed.date) : null);
+              if (dateISO) {
+                const parsedDate = parseBirthDateString(dateISO) || (dtParsed ? dtParsed.date : now);
+                const targetAt = dtParsed && dtParsed.hasTime && !props['X-LUNAR-DATE']
+                  ? dtParsed.date
+                  : new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 9, 0, 0, 0);
+                const lunarDay =
+                  Number.isInteger(xDay) && xDay >= 1 && xDay <= 30
+                    ? xDay
+                    : getCalendarDayLunarSummary(parsedDate, targetAt).activeLunarDay;
+                const groupKey = xGroupId || `date|${dateISO}|${text.toLowerCase()}`;
+                if (!seenGroups.has(groupKey)) {
+                  seenGroups.add(groupKey);
+                  imported.push({
+                    id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    mode: 'date',
+                    lunarDay,
+                    dateISO,
+                    text,
+                    repeatMonthly: false,
+                    enabled: xEnabled,
+                    nextTriggerAt: targetAt.getTime()
+                  });
+                }
+              }
+            }
+          }
+        }
+        inEvent = false;
+        inAlarm = false;
+        props = null;
+        continue;
+      }
+      if (!inEvent) continue;
+      if (upper === 'BEGIN:VALARM') {
+        inAlarm = true;
+        continue;
+      }
+      if (upper === 'END:VALARM') {
+        inAlarm = false;
+        continue;
+      }
+      if (inAlarm) continue;
+
+      const colonIdx = line.indexOf(':');
+      if (colonIdx <= 0) continue;
+      const keyPart = line.slice(0, colonIdx);
+      const valPart = line.slice(colonIdx + 1);
+      const propName = keyPart.split(';')[0].trim().toUpperCase();
+      if (!(propName in props)) {
+        props[propName] = unescapeIcsText(valPart);
+      }
+    }
+    return imported;
+  }
+
+  // 2. JSON fallback (array of reminders or { reminders: [...] })
+  const parsed = JSON.parse(trimmed);
+  const list = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.reminders) ? parsed.reminders : null);
+  if (!list) {
+    throw new Error('Unsupported format');
+  }
+  const now = new Date();
+  const imported = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const text = String(item.text || '').trim();
+    if (!text) continue;
+    const mode = item.mode === 'date' ? 'date' : 'lunar';
+    const enabled = item.enabled !== false;
+    if (mode === 'lunar') {
+      const lunarDay = Number(item.lunarDay);
+      if (!Number.isInteger(lunarDay) || lunarDay < 1 || lunarDay > 30) continue;
+      const nextDate = findNextDateForLunarDay(lunarDay, now);
+      imported.push({
+        id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        mode: 'lunar',
+        lunarDay,
+        dateISO: toISODate(nextDate),
+        text,
+        repeatMonthly: Boolean(item.repeatMonthly),
+        enabled,
+        nextTriggerAt: nextDate.getTime()
+      });
+    } else {
+      const dateISO = parseDisplayOrIsoDate(item.dateISO || '');
+      if (!dateISO) continue;
+      const parsedDate = parseBirthDateString(dateISO) || now;
+      const targetAt = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 9, 0, 0, 0);
+      const rawDay = Number(item.lunarDay);
+      const lunarDay =
+        Number.isInteger(rawDay) && rawDay >= 1 && rawDay <= 30
+          ? rawDay
+          : getCalendarDayLunarSummary(parsedDate, targetAt).activeLunarDay;
+      imported.push({
+        id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        mode: 'date',
+        lunarDay,
+        dateISO,
+        text,
+        repeatMonthly: false,
+        enabled,
+        nextTriggerAt: targetAt.getTime()
+      });
+    }
+  }
+  return imported;
+}
+
 // =========================================================================
 // Notification Scheduling (replacement for the Chrome background Service Worker)
 // =========================================================================
@@ -3621,15 +3948,24 @@ function notifyPreviewHost() {
 // =========================================================================
 function bindEvents() {
   // Bottom Navigation Tabs
+  const applyActiveTab = (tabName) => {
+    const allowed = ['today', 'reminders', 'settings'];
+    const target = allowed.includes(tabName) ? tabName : 'today';
+    activeTab = target;
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.toggle('active', b.dataset?.tab === target));
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+      panel.classList.toggle('active', panel.id === `tab-${target}`);
+    });
+  };
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.addEventListener('click', () => {
-      activeTab = btn.dataset.tab;
-      document.querySelectorAll('.nav-tab').forEach(b => b.classList.toggle('active', b === btn));
-      document.querySelectorAll('.tab-panel').forEach(panel => {
-        panel.classList.toggle('active', panel.id === `tab-${activeTab}`);
-      });
+      applyActiveTab(btn.dataset.tab);
     });
   });
+  const initialHash = String(window.location?.hash || '').replace(/^#/, '');
+  if (initialHash === 'settings' || initialHash === 'reminders' || initialHash === 'today') {
+    applyActiveTab(initialHash);
+  }
 
   // Return to Today button
   const resetToToday = () => {
@@ -3728,8 +4064,16 @@ function bindEvents() {
     openDayNotePanel(dayNoteTargetDate, summary, personal);
   });
 
-  // Reminders Tab: Form toggle & Mode switch
+  // Reminders Tab: Form toggle, Import/Export (.ics) & Mode switch
   const formEl = document.getElementById('reminder-form');
+  const remindersStatusEl = document.getElementById('reminders-status-msg');
+  const showRemindersStatus = (text, isError = false) => {
+    if (!remindersStatusEl) return;
+    remindersStatusEl.textContent = text;
+    remindersStatusEl.classList.remove('hidden');
+    remindersStatusEl.classList.toggle('error', Boolean(isError));
+  };
+
   document.getElementById('btn-toggle-reminder-form').addEventListener('click', () => {
     formEl.classList.toggle('hidden');
     updateLunarDayNextPreview();
@@ -3738,6 +4082,70 @@ function bindEvents() {
   document.getElementById('btn-cancel-reminder').addEventListener('click', () => {
     formEl.classList.add('hidden');
   });
+
+  const exportRemindersBtn = document.getElementById('btn-export-reminders');
+  if (exportRemindersBtn) {
+    exportRemindersBtn.addEventListener('click', () => {
+      const dict = getActiveDictionary();
+      const labels = getUILabels(dict);
+      if (!appState.reminders.length) {
+        showRemindersStatus(labels.msg_reminders_export_empty, true);
+        return;
+      }
+      const icsContent = buildRemindersIcs(appState.reminders, dict);
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lunar-rhythm-reminders-${toISODate(new Date())}.ics`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showRemindersStatus(`${labels.msg_reminders_exported}: ${appState.reminders.length}`, false);
+    });
+  }
+
+  const importRemindersInput = document.getElementById('input-import-reminders');
+  if (importRemindersInput) {
+    importRemindersInput.addEventListener('change', async (e) => {
+      const labels = getUILabels();
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsedList = parseRemindersImportText(text);
+        if (!parsedList.length) {
+          showRemindersStatus(labels.msg_reminders_import_empty, true);
+          return;
+        }
+        const existingKeys = new Set(appState.reminders.map(reminderDedupeKey));
+        const added = [];
+        let skipped = 0;
+        for (const rem of parsedList) {
+          const key = reminderDedupeKey(rem);
+          if (existingKeys.has(key)) {
+            skipped += 1;
+            continue;
+          }
+          existingKeys.add(key);
+          added.push(rem);
+        }
+        if (!added.length) {
+          showRemindersStatus(labels.msg_reminders_none_added, false);
+          return;
+        }
+        await persistReminders([...added, ...appState.reminders]);
+        renderUI();
+        const skipPart = skipped > 0 ? ` (${labels.msg_reminders_skipped_dups}: ${skipped})` : '';
+        showRemindersStatus(`${labels.msg_reminders_imported}: ${added.length}${skipPart}`, false);
+      } catch (err) {
+        showRemindersStatus(`${labels.msg_reminders_import_error}: ${err.message}`, true);
+      } finally {
+        e.target.value = '';
+      }
+    });
+  }
 
   document.querySelectorAll('#reminder-form .seg-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -3865,6 +4273,7 @@ function bindEvents() {
     await persistReminders([newRem, ...appState.reminders]);
     document.getElementById('input-reminder-text').value = '';
     formEl.classList.add('hidden');
+    if (remindersStatusEl) remindersStatusEl.classList.add('hidden');
     renderUI();
   });
 
@@ -4155,7 +4564,7 @@ function bindEvents() {
         'meta', 'profiles', 'phases', 'phase_day_notes', 'roles', 'age_classes',
         'actors', 'moon_trends', 'moon_phase_names', 'zodiac_names', 'zodiac_hints', 'lunar_days',
         'aspect_dynamics', 'maneuvers', 'actor_maneuver_matrix', 'lifestyle_tips',
-        'day_themes', 'phase_variants', 'role_tone', 'window_focus', 'ui_labels'
+        'day_themes', 'phase_variants', 'role_tone', 'window_focus', 'ui_labels', 'help'
       ];
       const hasKnownSection =
         parsed &&
@@ -4234,6 +4643,27 @@ function bindEvents() {
       copyRawResetTimer = null;
     }, 2000);
   });
+
+  // Open standalone interactive Help page (help.html)
+  const openHelpBtn = document.getElementById('btn-open-help');
+  if (openHelpBtn) {
+    openHelpBtn.addEventListener('click', () => {
+      const params = new URLSearchParams();
+      if (Number.isFinite(appState.observerLat) && Number.isFinite(appState.observerLon)) {
+        params.set('lat', String(appState.observerLat));
+        params.set('lon', String(appState.observerLon));
+      }
+      if (appState.birthDate) {
+        params.set('birth', appState.birthDate);
+      }
+      params.set('lang', appState.builtinLang || detectDefaultLang());
+      if (appState.dictionaryMode === 'custom') {
+        params.set('dict', 'custom');
+      }
+      params.set('back', 'index.html#settings');
+      window.location.href = `help.html?${params.toString()}`;
+    });
+  }
 }
 
 /**
