@@ -4083,9 +4083,112 @@ function bindEvents() {
     formEl.classList.add('hidden');
   });
 
+  async function saveOrShareExportFile({ filename, content, mimeType, title }) {
+    const capPlugins = typeof window !== 'undefined' ? window.Capacitor?.Plugins : null;
+
+    // 1. Capacitor Filesystem (+ optional Share) if available in native shell
+    if (capPlugins?.Filesystem && typeof capPlugins.Filesystem.writeFile === 'function') {
+      try {
+        const writeRes = await capPlugins.Filesystem.writeFile({
+          path: filename,
+          data: content,
+          directory: 'DOCUMENTS',
+          encoding: 'utf8',
+          recursive: true
+        });
+        if (capPlugins.Share && typeof capPlugins.Share.share === 'function' && writeRes?.uri) {
+          try {
+            await capPlugins.Share.share({
+              title: title || filename,
+              url: writeRes.uri,
+              dialogTitle: filename
+            });
+          } catch {
+            // File is already written to Documents even if share sheet is dismissed
+          }
+        }
+        return { ok: true, method: 'documents', filename };
+      } catch {
+        // Fallback if scoped storage requires Cache + Share
+        if (capPlugins.Share && typeof capPlugins.Share.share === 'function') {
+          try {
+            const cacheRes = await capPlugins.Filesystem.writeFile({
+              path: filename,
+              data: content,
+              directory: 'CACHE',
+              encoding: 'utf8',
+              recursive: true
+            });
+            await capPlugins.Share.share({
+              title: title || filename,
+              url: cacheRes?.uri,
+              dialogTitle: filename
+            });
+            return { ok: true, method: 'share', filename };
+          } catch (shareErr) {
+            if (shareErr?.name === 'AbortError' || /cancel/i.test(String(shareErr?.message || ''))) {
+              return { ok: false, aborted: true, filename };
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Web Share API Level 2 (native Android WebView / Mobile Chrome / iOS Share sheet)
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function' && typeof File === 'function') {
+      try {
+        const file = new File([content], filename, { type: mimeType });
+        if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: title || filename
+          });
+          return { ok: true, method: 'share', filename };
+        }
+      } catch (err) {
+        if (err?.name === 'AbortError') {
+          return { ok: false, aborted: true, filename };
+        }
+        // Otherwise fall back to download / clipboard below
+      }
+    }
+
+    // 3. Native WebView without file-share support: try Capacitor Share text or clipboard, plus <a download>
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    if (isNativePlatform()) {
+      if (capPlugins?.Share && typeof capPlugins.Share.share === 'function') {
+        try {
+          await capPlugins.Share.share({ title: filename, text: content, dialogTitle: filename });
+          return { ok: true, method: 'share', filename };
+        } catch (err) {
+          if (err?.name === 'AbortError') return { ok: false, aborted: true, filename };
+        }
+      }
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(content);
+          return { ok: true, method: 'clipboard', filename };
+        } catch {
+          // Ignore clipboard denial
+        }
+      }
+    }
+
+    return { ok: true, method: 'download', filename };
+  }
+
   const exportRemindersBtn = document.getElementById('btn-export-reminders');
   if (exportRemindersBtn) {
-    exportRemindersBtn.addEventListener('click', () => {
+    exportRemindersBtn.addEventListener('click', async () => {
       const dict = getActiveDictionary();
       const labels = getUILabels(dict);
       if (!appState.reminders.length) {
@@ -4093,16 +4196,27 @@ function bindEvents() {
         return;
       }
       const icsContent = buildRemindersIcs(appState.reminders, dict);
-      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `lunar-rhythm-reminders-${toISODate(new Date())}.ics`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      showRemindersStatus(`${labels.msg_reminders_exported}: ${appState.reminders.length}`, false);
+      const filename = `lunar-rhythm-reminders-${toISODate(new Date())}.ics`;
+      const result = await saveOrShareExportFile({
+        filename,
+        content: icsContent,
+        mimeType: 'text/calendar;charset=utf-8',
+        title: `${labels.hero_alarm_title} (.ics)`
+      });
+      if (!result.ok && result.aborted) {
+        showRemindersStatus(labels.msg_reminders_export_cancelled || labels.btn_cancel, true);
+        return;
+      }
+      const count = appState.reminders.length;
+      if (result.method === 'documents') {
+        showRemindersStatus(`${labels.msg_reminders_exported_docs || labels.msg_reminders_exported}: ${filename} (${count})`, false);
+      } else if (result.method === 'share') {
+        showRemindersStatus(`${labels.msg_reminders_exported_shared || labels.msg_reminders_exported}: ${filename} (${count})`, false);
+      } else if (result.method === 'clipboard') {
+        showRemindersStatus(`${labels.msg_reminders_export_clipboard || labels.msg_reminders_exported}: ${filename} (${count})`, false);
+      } else {
+        showRemindersStatus(`${labels.msg_reminders_exported}: ${filename} (${count})`, false);
+      }
     });
   }
 
@@ -4535,20 +4649,29 @@ function bindEvents() {
     void rescheduleNotifications();
   });
 
-  document.getElementById('btn-download-template').addEventListener('click', () => {
+  document.getElementById('btn-download-template').addEventListener('click', async () => {
     const baseDict = getActiveBaseDictionary();
+    const labels = getUILabels();
     const langCode = appState.builtinLang || detectDefaultLang();
-    const blob = new Blob([JSON.stringify(baseDict, null, 2)], {
-      type: 'application/json'
+    const filename = `base_default_${langCode}.json`;
+    const result = await saveOrShareExportFile({
+      filename,
+      content: JSON.stringify(baseDict, null, 2),
+      mimeType: 'application/json;charset=utf-8',
+      title: filename
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `base_default_${langCode}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const status = document.getElementById('dict-status-msg');
+    if (status && result.ok) {
+      status.classList.remove('hidden', 'error');
+      const prefix = result.method === 'documents'
+        ? (labels.msg_reminders_exported_docs || labels.msg_reminders_exported)
+        : result.method === 'share'
+        ? (labels.msg_reminders_exported_shared || labels.msg_reminders_exported)
+        : result.method === 'clipboard'
+        ? (labels.msg_reminders_export_clipboard || labels.msg_reminders_exported)
+        : labels.msg_reminders_exported;
+      status.textContent = `${prefix}: ${filename}`;
+    }
   });
 
   document.getElementById('input-upload-dict').addEventListener('change', async (e) => {

@@ -10,6 +10,7 @@ import {
 import {
   BUILTIN_DICTIONARIES,
   SUPPORTED_BUILTIN_LANGS,
+  detectDefaultLang,
   deepMergeDictionary,
   getBuiltinDictionary
 } from './dictionary_default.js';
@@ -50,7 +51,7 @@ function parseHelpQueryContext() {
   const params = new URLSearchParams(window.location.search);
 
   const rawLang = String(params.get('lang') || '').trim().toLowerCase();
-  const lang = SUPPORTED_BUILTIN_LANGS.includes(rawLang) ? rawLang : 'ru';
+  const lang = SUPPORTED_BUILTIN_LANGS.includes(rawLang) ? rawLang : detectDefaultLang();
 
   const rawBack = String(params.get('back') || '').trim();
   const backUrl = SAFE_BACK_TARGETS.has(rawBack) ? rawBack : 'index.html#settings';

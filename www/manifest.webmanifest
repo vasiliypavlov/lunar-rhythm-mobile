@@ -1,8 +1,8 @@
 {
-  "name": "Ритм Дня — Lunar Rhythm Navigator",
-  "short_name": "Ритм Дня",
-  "description": "Лунный ритм-дневник: точный лунный календарь, персональные фазы, лунный будильник и озвучка сводок.",
-  "lang": "ru",
+  "name": "Lunar Rhythm Navigator",
+  "short_name": "Lunar Rhythm",
+  "description": "Autonomous lunar calendar, personal rhythm navigator, aspect graph, and lunar alarm with voice briefing.",
+  "lang": "en",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

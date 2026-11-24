@@ -14,7 +14,7 @@ export const BUILTIN_DICTIONARIES = {
 
 export const SUPPORTED_BUILTIN_LANGS = ['ru', 'en', 'es', 'de', 'fr'];
 
-export const DEFAULT_DICTIONARY = DICT_RU;
+export const DEFAULT_DICTIONARY = DICT_EN;
 
 export function detectDefaultLang(overrideLang) {
   const navLang =
