@@ -36,3 +36,7 @@ Thumbs.db
 tmp/
 lunar-rhythm-mobile-observer-coords.patch
 scripts/compare-prompts.mjs
+www/lunar-rhythm-mobile-help-real-data.patch
+www/lunar-rhythm-mobile-color-sync.patch
+www/lunar-rhythm-mobile-reminders-ics.patch
+www/lunar-rhythm-mobile-ui-help.patch

@@ -94,6 +94,12 @@ function parseHelpQueryContext() {
     }
   }
 
+  const rawTheme = String(params.get('theme') || '').trim().toLowerCase();
+  const theme = rawTheme === 'light' || rawTheme === 'dark' ? rawTheme : null;
+
+  const rawFont = String(params.get('font') || '').trim().toLowerCase();
+  const fontSize = ['normal', 'large', 'xlarge'].includes(rawFont) ? rawFont : null;
+
   return {
     lang,
     backUrl,
@@ -101,11 +107,20 @@ function parseHelpQueryContext() {
     hasValidCoords,
     coords,
     birthISO: birthDate ? rawBirth : null,
-    birthMoonAge
+    birthMoonAge,
+    theme,
+    fontSize
   };
 }
 
+function applyHelpAppearance(theme, fontSize) {
+  if (!document.documentElement) return;
+  document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.fontSize = ['large', 'xlarge'].includes(fontSize) ? fontSize : 'normal';
+}
+
 const ctx = parseHelpQueryContext();
+applyHelpAppearance(ctx.theme || 'dark', ctx.fontSize || 'normal');
 const baseDict = BUILTIN_DICTIONARIES[ctx.lang] || getBuiltinDictionary(ctx.lang);
 let activeDict = baseDict;
 
@@ -136,7 +151,8 @@ tabs.forEach(tabBtn => {
     if (sec) sec.classList.add('active');
     activeTab = key;
 
-    if (activeTab === 'days') drawLunarDays(+document.getElementById('daySlider').value);
+    if (activeTab === 'horizon') { drawHorizon(); updateHorizonPanels(); }
+    if (activeTab === 'days') { drawLunarDays(+document.getElementById('daySlider').value); updateLunarDayPanels(+document.getElementById('daySlider').value); }
     if (activeTab === 'personal') drawPersonal();
   });
 });
@@ -155,6 +171,8 @@ const elongVal = document.getElementById('elongVal');
 const phaseValHorizon = document.getElementById('phaseValHorizon');
 const timeSlider = document.getElementById('timeSlider');
 const timeVal = document.getElementById('timeVal');
+const orbitalTimeSlider = document.getElementById('orbitalTimeSlider');
+const orbitalTimeVal = document.getElementById('orbitalTimeVal');
 const cycleBtn = document.getElementById('cycleBtn');
 const todayBtn = document.getElementById('todayBtn');
 const orbitalEarthViewCanvas = document.getElementById('orbitalEarthViewCanvas');
@@ -169,9 +187,14 @@ function formatSliderHour(hr) {
 
 function setTimeSliderHour(hr) {
   const clamped = Math.max(0, Math.min(24, Number(hr) || 0));
-  timeSlider.value = clamped.toFixed(1);
+  const snapped = Math.round(clamped * 10) / 10;
+  const valStr = snapped.toFixed(1);
   // Метка — по фактическому значению ползунка (шаг 0.1 ч), иначе расхождение в минуты.
-  timeVal.textContent = formatSliderHour(Math.round(clamped * 10) / 10);
+  const clockStr = formatSliderHour(snapped);
+  if (timeSlider) timeSlider.value = valStr;
+  if (timeVal) timeVal.textContent = clockStr;
+  if (orbitalTimeSlider) orbitalTimeSlider.value = valStr;
+  if (orbitalTimeVal) orbitalTimeVal.textContent = clockStr;
 }
 
 function drawEarthViewMoon(ctx2d, cx, cy, moonR, elongDeg, opts = {}) {
@@ -294,12 +317,17 @@ phaseSliderHorizon.addEventListener('input', (e) => {
   const target = +e.target.value;
   setHorizonDate(findDateForElongation(target, horizonDate));
 });
-timeSlider.addEventListener('input', (e) => {
-  const hr = parseFloat(e.target.value);
-  timeVal.textContent = formatSliderHour(hr);
+function onTimeSliderInput(e) {
+  setTimeSliderHour(parseFloat(e.target.value));
+  drawOrbital();
   drawHorizon();
   updateHorizonPanels();
-});
+}
+
+timeSlider.addEventListener('input', onTimeSliderInput);
+if (orbitalTimeSlider) {
+  orbitalTimeSlider.addEventListener('input', onTimeSliderInput);
+}
 
 const horizonDateInput = document.getElementById('horizonDateInput');
 if (horizonDateInput) {
@@ -312,14 +340,21 @@ if (horizonDateInput) {
   });
 }
 
-todayBtn.addEventListener('click', () => {
+function resetHorizonToToday() {
   stopAnim();
   const now = new Date();
-  setHorizonDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+  const nowInfo = getMoonPhaseInfo(now);
   setTimeSliderHour(now.getHours() + now.getMinutes() / 60);
-  updateHorizonPanels();
-  drawHorizon();
-});
+  setHorizonDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+  updateUI(nowInfo.elong, false);
+}
+
+todayBtn.addEventListener('click', resetHorizonToToday);
+
+const horizonTodayBtn = document.getElementById('horizonTodayBtn');
+if (horizonTodayBtn) {
+  horizonTodayBtn.addEventListener('click', resetHorizonToToday);
+}
 
 function startAnim() {
   isPlaying = true;
@@ -349,41 +384,62 @@ cycleBtn.addEventListener('click', () => (isPlaying ? stopAnim() : startAnim()))
 const orbitalCanvas = document.getElementById('orbitalCanvas');
 const octx = orbitalCanvas.getContext('2d');
 
+function drawOutlinedText(ctx2d, text, x, y, fill, font, align, maxWidth) {
+  ctx2d.save();
+  ctx2d.font = font;
+  ctx2d.textAlign = align || 'center';
+  ctx2d.lineJoin = 'round';
+  ctx2d.lineWidth = 4;
+  ctx2d.strokeStyle = 'rgba(13, 17, 34, 0.9)';
+  if (maxWidth) {
+    ctx2d.strokeText(text, x, y, maxWidth);
+  } else {
+    ctx2d.strokeText(text, x, y);
+  }
+  ctx2d.fillStyle = fill;
+  if (maxWidth) {
+    ctx2d.fillText(text, x, y, maxWidth);
+  } else {
+    ctx2d.fillText(text, x, y);
+  }
+  ctx2d.restore();
+}
+
 function drawOrbital() {
   const h = hDict();
   const W = orbitalCanvas.width;
   const H = orbitalCanvas.height;
   const cx = W / 2;
-  const cy = H / 2;
-  const earthR = 18;
-  const moonOrbitR = 110;
-  const moonR = 18;
+  const cy = H / 2 - 4;
+  const earthR = 20;
+  const moonOrbitR = 116;
+  const moonR = 19;
   const rad = (currentElong * Math.PI) / 180;
 
   octx.clearRect(0, 0, W, H);
 
   octx.fillStyle = 'rgba(170, 178, 213, 0.4)';
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 22; i++) {
     octx.beginPath();
-    octx.arc((i * 47) % W, (i * 83) % H, (i % 2) + 0.5, 0, Math.PI * 2);
+    octx.arc((i * 47) % W, (i * 83) % H, (i % 2) + 0.6, 0, Math.PI * 2);
     octx.fill();
   }
 
-  const sunGrad = octx.createLinearGradient(0, 0, 140, 0);
+  const sunGrad = octx.createLinearGradient(0, 0, 145, 0);
   sunGrad.addColorStop(0, 'rgba(232, 230, 216, 0.5)');
   sunGrad.addColorStop(1, 'rgba(232, 230, 216, 0)');
   octx.fillStyle = sunGrad;
-  octx.fillRect(0, 0, 140, H);
+  octx.fillRect(0, 0, 145, H);
 
   octx.fillStyle = '#e8e6d8';
-  octx.font = 'bold 12px sans-serif';
+  octx.font = 'bold 16px sans-serif';
   octx.textAlign = 'left';
-  octx.fillText(h.canvas_sun || 'SUN', 10, 20, 110);
+  octx.fillText(h.canvas_sun || 'SUN', 14, 26, 125);
 
-  octx.strokeStyle = 'rgba(232, 230, 216, 0.15)';
+  octx.strokeStyle = 'rgba(232, 230, 216, 0.14)';
   octx.lineWidth = 1;
   octx.setLineDash([4, 4]);
-  for (let y = 40; y < H; y += 40) {
+  for (let y = 44; y < H; y += 44) {
     octx.beginPath();
     octx.moveTo(20, y);
     octx.lineTo(W - 20, y);
@@ -391,70 +447,147 @@ function drawOrbital() {
   }
   octx.setLineDash([]);
 
+  // Базовая окружность орбиты Луны
   octx.strokeStyle = '#2a3152';
-  octx.lineWidth = 1;
+  octx.lineWidth = 1.5;
   octx.beginPath();
-  octx.ellipse(cx, cy, moonOrbitR, moonOrbitR, 0, 0, Math.PI * 2);
+  octx.arc(cx, cy, moonOrbitR, 0, Math.PI * 2);
   octx.stroke();
 
+  // Дуга угла элонгации на орбите Луны
+  if (currentElong >= 359.5) {
+    octx.beginPath();
+    octx.arc(cx, cy, moonOrbitR, 0, Math.PI * 2);
+    octx.strokeStyle = 'rgba(205, 212, 232, 0.72)';
+    octx.lineWidth = 3.5;
+    octx.stroke();
+  } else if (currentElong > 0.5) {
+    octx.beginPath();
+    octx.arc(cx, cy, moonOrbitR, Math.PI, Math.PI - rad, true);
+    octx.strokeStyle = 'rgba(205, 212, 232, 0.72)';
+    octx.lineWidth = 3.5;
+    octx.stroke();
+  }
+
   octx.fillStyle = '#8b91a8';
-  octx.font = '10px sans-serif';
-  octx.textAlign = 'center';
   [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2].forEach(a => {
     const px = cx + Math.cos(a) * moonOrbitR;
     const py = cy - Math.sin(a) * moonOrbitR;
     octx.beginPath();
-    octx.arc(px, py, 2, 0, Math.PI * 2);
+    octx.arc(px, py, 2.8, 0, Math.PI * 2);
     octx.fill();
   });
 
-  octx.fillStyle = '#5b8def';
-  octx.beginPath();
-  octx.arc(cx, cy, earthR, 0, Math.PI * 2);
-  octx.fill();
-  octx.fillStyle = '#e8e9f0';
-  octx.font = 'bold 13px sans-serif';
-  octx.fillText(h.canvas_earth || 'EARTH', cx, cy + earthR + 14, 90);
-
   // Направление на Солнце — влево (угол Math.PI). 0° = Новолуние слева между Солнцем и Землёй;
   // движение против часовой стрелки: 0° (лево) -> 90° (низ) -> 180° (право, Полнолуние) -> 270° (верх).
-  const moonX = cx - Math.cos(rad) * moonOrbitR;
-  const moonY = cy + Math.sin(rad) * moonOrbitR;
+  const mx = -Math.cos(rad);
+  const my = Math.sin(rad);
+  const moonX = cx + mx * moonOrbitR;
+  const moonY = cy + my * moonOrbitR;
 
   // Ось Земля — Солнце (пунктир влево от Земли)
-  octx.strokeStyle = 'rgba(245, 183, 62, 0.35)';
-  octx.lineWidth = 1.25;
-  octx.setLineDash([3, 4]);
+  octx.strokeStyle = 'rgba(245, 183, 62, 0.38)';
+  octx.lineWidth = 1.5;
+  octx.setLineDash([4, 4]);
   octx.beginPath();
   octx.moveTo(cx, cy);
-  octx.lineTo(Math.max(20, cx - moonOrbitR - 24), cy);
+  octx.lineTo(Math.max(20, cx - moonOrbitR - 22), cy);
   octx.stroke();
   octx.setLineDash([]);
 
   // Вектор Земля — Луна
   octx.strokeStyle = '#7f9cf5';
-  octx.lineWidth = 2;
+  octx.lineWidth = 2.2;
   octx.beginPath();
   octx.moveTo(cx, cy);
   octx.lineTo(moonX, moonY);
   octx.stroke();
 
-  if (currentElong > 0.5) {
-    octx.beginPath();
-    octx.arc(cx, cy, 35, Math.PI, Math.PI - rad, true);
-    octx.strokeStyle = '#f5a47f';
-    octx.lineWidth = 2;
-    octx.stroke();
+  // Земля в центре с дневной (слева к Солнцу) и ночной (справа) полусферами
+  const earthGrad = octx.createLinearGradient(cx - earthR, cy, cx + earthR, cy);
+  earthGrad.addColorStop(0, '#78b0ff');
+  earthGrad.addColorStop(0.42, '#4a85ea');
+  earthGrad.addColorStop(0.58, '#1d3260');
+  earthGrad.addColorStop(1, '#111a36');
+  octx.fillStyle = earthGrad;
+  octx.beginPath();
+  octx.arc(cx, cy, earthR, 0, Math.PI * 2);
+  octx.fill();
+  octx.strokeStyle = 'rgba(130, 175, 255, 0.38)';
+  octx.lineWidth = 1.2;
+  octx.stroke();
+
+  // Динамическое положение наблюдателя («Вы») по местному солнечному времени (12:00 — слева к Солнцу, против часовой)
+  const hr = timeSlider ? parseFloat(timeSlider.value) : 12;
+  const obsRad = ((hr - 12) / 24) * Math.PI * 2;
+  const ux = -Math.cos(obsRad);
+  const uy = Math.sin(obsRad);
+
+  const dotX = cx + ux * earthR;
+  const dotY = cy + uy * earthR;
+  const tipX = cx + ux * (earthR + 5);
+  const tipY = cy + uy * (earthR + 5);
+  const tailX = cx + ux * (earthR + 27);
+  const tailY = cy + uy * (earthR + 27);
+
+  // Маркер наблюдателя на поверхности Земли
+  octx.fillStyle = '#ffd76a';
+  octx.beginPath();
+  octx.arc(dotX, dotY, 3.6, 0, Math.PI * 2);
+  octx.fill();
+  octx.strokeStyle = '#0d1122';
+  octx.lineWidth = 1.2;
+  octx.stroke();
+
+  // Стрелка на наблюдателя
+  const arrowAngle = Math.atan2(tipY - tailY, tipX - tailX);
+  const headLen = 8.5;
+  octx.strokeStyle = '#dce0ef';
+  octx.fillStyle = '#dce0ef';
+  octx.lineWidth = 2;
+  octx.beginPath();
+  octx.moveTo(tailX, tailY);
+  octx.lineTo(tipX + Math.cos(arrowAngle) * 2.5, tipY + Math.sin(arrowAngle) * 2.5);
+  octx.stroke();
+
+  octx.beginPath();
+  octx.moveTo(tipX, tipY);
+  octx.lineTo(tipX - headLen * Math.cos(arrowAngle - 0.45), tipY - headLen * Math.sin(arrowAngle - 0.45));
+  octx.lineTo(tipX - headLen * Math.cos(arrowAngle + 0.45), tipY - headLen * Math.sin(arrowAngle + 0.45));
+  octx.closePath();
+  octx.fill();
+
+  // Предварительная позиция подписи Луны для взаимной разводки
+  const labelX = Math.max(48, Math.min(W - 48, moonX));
+  const nameY = moonY + moonR + 20;
+  const degY = moonY + moonR + 39;
+
+  // Подпись «Вы» (с защитой от пересечения с осью Солнца, вектором Луны и подписью Луны)
+  let lblX = cx + ux * (earthR + 40);
+  let lblY = cy + uy * (earthR + 40) + 5;
+  const tx = -uy;
+  const ty = ux;
+
+  // Отводим от пунктирной оси Солнца слева
+  if (ux < -0.2 && Math.abs(uy) < 0.38) {
+    lblY += uy >= 0 ? 15 : -15;
+  }
+  // Отводим от вектора Земля — Луна при совпадении направлений
+  const dotMoon = ux * mx + uy * my;
+  const crossMoon = ux * my - uy * mx;
+  if (dotMoon > 0.35 && Math.abs(crossMoon) < 0.42) {
+    const side = crossMoon >= 0 ? -1 : 1;
+    lblX += tx * side * 18;
+    lblY += ty * side * 18;
+  }
+  // Защита от наложения на блок подписи Луны
+  if (Math.hypot(lblX - labelX, lblY - (nameY + degY) / 2) < 42) {
+    const side = (lblX - labelX) * tx + (lblY - nameY) * ty >= 0 ? 1 : -1;
+    lblX += tx * side * 24;
+    lblY += ty * side * 24;
   }
 
-  const midAngle = Math.PI - rad / 2;
-  const degLabelX = cx + Math.cos(midAngle) * 55;
-  const rawDegY = cy + Math.sin(midAngle) * 55 + 4;
-  const degLabelY = Math.abs(Math.sin(midAngle)) < 0.22 ? cy - 12 : rawDegY;
-  octx.fillStyle = '#f5a47f';
-  octx.font = 'bold 12px sans-serif';
-  octx.textAlign = 'center';
-  octx.fillText(Math.round(currentElong) + '°', degLabelX, degLabelY);
+  drawOutlinedText(octx, h.canvas_you || 'You', lblX, lblY, '#e8e9f0', 'bold 15px sans-serif', 'center', 75);
 
   // Физический вид сверху на орбите (Вариант Б): левая полусфера Луны всегда обращена к Солнцу и освещена,
   // правая — в тени; фактическая фаза «как видна с Земли» показана на мини-диске в карточке ниже.
@@ -466,8 +599,8 @@ function drawOrbital() {
   octx.arc(0, 0, moonR, 0, Math.PI * 2);
   octx.fill();
 
-  octx.strokeStyle = 'rgba(139, 145, 168, 0.35)';
-  octx.lineWidth = 1;
+  octx.strokeStyle = 'rgba(139, 145, 168, 0.38)';
+  octx.lineWidth = 1.2;
   octx.stroke();
 
   octx.beginPath();
@@ -479,10 +612,9 @@ function drawOrbital() {
   octx.fill();
   octx.restore();
 
-  octx.fillStyle = '#e8e9f0';
-  octx.font = 'bold 13px sans-serif';
-  octx.textAlign = 'center';
-  octx.fillText(h.canvas_moon || 'Moon', moonX, moonY + moonR + 16, 80);
+  // Подпись Луны и угла у самого диска Луны
+  drawOutlinedText(octx, h.canvas_moon || 'Moon', labelX, nameY, '#e8e9f0', 'bold 17px sans-serif', 'center', 95);
+  drawOutlinedText(octx, Math.round(currentElong) + '°', labelX, degY, '#f5a47f', 'bold 15.5px sans-serif', 'center', 70);
 }
 
 /* ═══════════ ГОРИЗОНТ CANVAS ═══════════ */
@@ -579,13 +711,14 @@ function findUpperTransit(body, jdStart, jdEnd, latDeg, lonDeg) {
   for (let t = jdStart + step; t <= jdEnd + step; t += step) {
     const tc = Math.min(t, jdEnd);
     const cur = getBodySkyPosition(tc, body, latDeg, lonDeg).hourAngleDeg;
-    if (prev > 180 && cur < 180) {
+    if (prev > 270 && cur < 90) {
       let lo = tc - step;
       let hi = tc;
       for (let i = 0; i < 20; i++) {
         const mid = (lo + hi) / 2;
         const ha = getBodySkyPosition(mid, body, latDeg, lonDeg).hourAngleDeg;
-        if (ha > 180) lo = mid; else hi = mid;
+        const s = ha > 180 ? ha - 360 : ha;
+        if (s < 0) lo = mid; else hi = mid;
       }
       return (lo + hi) / 2;
     }
@@ -615,6 +748,12 @@ function buildDaySegments(rises, sets, jdDayStart, startsAbove) {
   }
   if (above) segs.push([curStart, 24]);
   return segs;
+}
+
+function formatHorizonMetricJD(disp) {
+  if (!disp || disp.jd === null || disp.jd === undefined) return '--:--';
+  const d = fromJulianDay(disp.jd);
+  return disp.sameDay ? formatClock(d) : `${formatClock(d)} (${formatDateShort(d)})`;
 }
 
 function computeHorizonData(date, lite) {
@@ -662,6 +801,52 @@ function computeHorizonData(date, lite) {
     data.nauticalDusk = nauticalEvents.sets[0] || null;
     data.sunTransit = findUpperTransit('sun', jdStart, jdEnd, latDeg, lonDeg);
     data.moonTransit = findUpperTransit('moon', jdStart, jdEnd, latDeg, lonDeg);
+
+    // Если событие Луны перешагнуло через полночь (например, кульминация в 00:54 на следующие сутки),
+    // находим ближайшее соответствующее событие за границей суток, чтобы не показывать ложное «--:--».
+    if (data.moonTransit !== null) {
+      data.moonTransitDisplay = { jd: data.moonTransit, sameDay: true };
+    } else {
+      let adjTransit = null;
+      if (data.moonRise !== null) {
+        adjTransit = findUpperTransit('moon', data.moonRise, jdEnd + 1.08, latDeg, lonDeg);
+      }
+      if (adjTransit === null && data.moonSet !== null) {
+        adjTransit = findUpperTransit('moon', jdStart - 1.08, data.moonSet, latDeg, lonDeg);
+      }
+      if (adjTransit === null) {
+        adjTransit =
+          findUpperTransit('moon', jdEnd, jdEnd + 1.08, latDeg, lonDeg) ||
+          findUpperTransit('moon', jdStart - 1.08, jdStart, latDeg, lonDeg);
+      }
+      data.moonTransitDisplay = adjTransit !== null ? { jd: adjTransit, sameDay: false } : null;
+    }
+
+    if (data.moonRise !== null) {
+      data.moonRiseDisplay = { jd: data.moonRise, sameDay: true };
+    } else {
+      const nextMoonEv = findHorizonEventsForFn(
+        (jd) => moonPos(jd).altDeg, jdEnd, jdEnd + 1.15, latDeg, lonDeg
+      );
+      const prevMoonEv = findHorizonEventsForFn(
+        (jd) => moonPos(jd).altDeg, jdStart - 1.15, jdStart, latDeg, lonDeg
+      );
+      const adjRise = nextMoonEv.rises[0] || prevMoonEv.rises[prevMoonEv.rises.length - 1] || null;
+      data.moonRiseDisplay = adjRise !== null ? { jd: adjRise, sameDay: false } : null;
+    }
+
+    if (data.moonSet !== null) {
+      data.moonSetDisplay = { jd: data.moonSet, sameDay: true };
+    } else {
+      const nextMoonEv = findHorizonEventsForFn(
+        (jd) => moonPos(jd).altDeg, jdEnd, jdEnd + 1.15, latDeg, lonDeg
+      );
+      const prevMoonEv = findHorizonEventsForFn(
+        (jd) => moonPos(jd).altDeg, jdStart - 1.15, jdStart, latDeg, lonDeg
+      );
+      const adjSet = nextMoonEv.sets[0] || prevMoonEv.sets[prevMoonEv.sets.length - 1] || null;
+      data.moonSetDisplay = adjSet !== null ? { jd: adjSet, sameDay: false } : null;
+    }
 
     data.sunStartsAbove = sunPos(jdStart).altDeg > 0;
     data.moonStartsAbove = moonPos(jdStart).altDeg > 0;
@@ -711,29 +896,37 @@ function horizonAzToX(az) {
 }
 
 function horizonGroundY() {
-  return Math.min(230, horizonCanvas.height - 150);
+  return Math.min(234, horizonCanvas.height - 234);
 }
 
 function horizonAltToY(alt) {
   const groundY = horizonGroundY();
-  return groundY - (alt / 90) * (groundY - 18);
+  return groundY - (alt / 90) * (groundY - 22);
 }
 
 function drawDiurnalPath(body, data) {
-  const steps = 96;
+  // Лунные сутки длятся ~24 ч 50 мин, поэтому охватываем 1.055 суток,
+  // чтобы замкнуть верхнюю кульминацию без разрыва пунктирной дуги.
+  const spanDays = body === 'moon' ? 1.055 : 1.002;
+  const steps = 112;
   hctx.beginPath();
+  let prevAz = null;
   for (let i = 0; i <= steps; i++) {
-    const jd = data.jdStart + ((data.jdEnd - data.jdStart) * i) / steps;
+    const jd = data.jdStart + (spanDays * i) / steps;
     const p = getBodySkyPosition(jd, body, data.latDeg, data.lonDeg);
     const x = horizonAzToX(p.azDeg);
     const y = horizonAltToY(p.altDeg);
-    if (i === 0) hctx.moveTo(x, y);
-    else hctx.lineTo(x, y);
+    if (i === 0 || (prevAz !== null && Math.abs(p.azDeg - prevAz) > 60)) {
+      hctx.moveTo(x, y);
+    } else {
+      hctx.lineTo(x, y);
+    }
+    prevAz = p.azDeg;
   }
   hctx.stroke();
 }
 
-function drawSkyBody(pos, kind, elong) {
+function drawSkyBody(pos, kind, elong, offArcY) {
   const h = hDict();
   const W = horizonCanvas.width;
   const groundY = horizonGroundY();
@@ -742,18 +935,20 @@ function drawSkyBody(pos, kind, elong) {
 
   if (!visible) {
     const east = pos.azDeg < 180;
-    hctx.fillStyle = kind === 'sun' ? 'rgba(245, 183, 62, 0.9)' : 'rgba(154, 160, 181, 0.95)';
-    hctx.font = '11px sans-serif';
-    hctx.textAlign = east ? 'left' : 'right';
     const state = pos.altDeg <= 0
       ? (h.horizon_below || 'below horizon')
       : (h.horizon_behind || 'behind');
-    hctx.fillText(`${label} — ${state} (${Math.round(pos.azDeg)}°)`, east ? 48 : W - 48, groundY - 14);
+    const txt = `${label} — ${state} (${Math.round(pos.azDeg)}°)`;
+    const color = kind === 'sun' ? '#ffd773' : '#d2d8ef';
+    const xPos = east ? 18 : W - 18;
+    const yPos = offArcY !== undefined ? offArcY : groundY - 14;
+    drawOutlinedText(hctx, txt, xPos, yPos, color, 'bold 13px sans-serif', east ? 'left' : 'right', W / 2 + 30);
     return;
   }
 
   const x = horizonAzToX(pos.azDeg);
   const y = horizonAltToY(pos.altDeg);
+  const safeX = Math.max(48, Math.min(W - 48, x));
   if (kind === 'sun') {
     const sunR = 26;
     const g = hctx.createRadialGradient(x, y, 4, x, y, sunR);
@@ -770,17 +965,13 @@ function drawSkyBody(pos, kind, elong) {
     hctx.arc(x, y, 13, 0, Math.PI * 2);
     hctx.fill();
 
-    hctx.fillStyle = 'rgba(245, 183, 62, 0.95)';
-    hctx.font = '11px sans-serif';
-    hctx.textAlign = 'center';
-    hctx.fillText(`${label} ${Math.round(pos.altDeg)}°`, x, y + 40);
+    const lblY = y + 40 > groundY - 6 ? y - 24 : y + 40;
+    drawOutlinedText(hctx, `${label} ${Math.round(pos.altDeg)}°`, safeX, lblY, '#ffd76a', 'bold 14.5px sans-serif', 'center', 130);
   } else {
     const isNearSun = elong <= 7 || elong >= 353;
     drawEarthViewMoon(hctx, x, y, 17, elong, { glow: 14, dimNearSun: true });
-    hctx.fillStyle = isNearSun ? '#9aa0b5' : '#e8e9f0';
-    hctx.font = '11.5px sans-serif';
-    hctx.textAlign = 'center';
-    hctx.fillText(`${label} ${Math.round(pos.altDeg)}°`, x, y + 31);
+    const lblY = y + 34 > groundY - 6 ? y - 24 : y + 34;
+    drawOutlinedText(hctx, `${label} ${Math.round(pos.altDeg)}°`, safeX, lblY, isNearSun ? '#b4bad0' : '#f0f2f8', 'bold 14.5px sans-serif', 'center', 130);
   }
 }
 
@@ -815,7 +1006,7 @@ function drawHorizon() {
     hctx.fillStyle = `rgba(255,255,255,${0.12 + 0.45 * darkness})`;
     for (let i = 0; i < 42; i++) {
       hctx.beginPath();
-      hctx.arc((i * 61) % W, (i * 37) % (groundY - 12), ((i % 3) + 1) * 0.22, 0, Math.PI * 2);
+      hctx.arc((i * 61) % W, (i * 37) % (groundY - 12), ((i % 3) + 1) * 0.25, 0, Math.PI * 2);
       hctx.fill();
     }
   }
@@ -825,28 +1016,24 @@ function drawHorizon() {
   hctx.beginPath();
   hctx.rect(42, 0, W - 84, groundY);
   hctx.clip();
-  hctx.setLineDash([4, 5]);
-  hctx.lineWidth = 1.25;
-  hctx.strokeStyle = 'rgba(245, 183, 62, 0.32)';
+  hctx.setLineDash([5, 5]);
+  hctx.lineWidth = 1.6;
+  hctx.strokeStyle = 'rgba(245, 183, 62, 0.38)';
   drawDiurnalPath('sun', data);
-  hctx.strokeStyle = 'rgba(127, 156, 245, 0.38)';
+  hctx.strokeStyle = 'rgba(127, 156, 245, 0.46)';
   drawDiurnalPath('moon', data);
   hctx.setLineDash([]);
   hctx.restore();
 
-  drawSkyBody(sunNow, 'sun', eNorm);
-  drawSkyBody(moonNow, 'moon', eNorm);
+  const sunVis = sunNow.altDeg > 0 && sunNow.azDeg >= 90 && sunNow.azDeg <= 270;
+  const moonVis = moonNow.altDeg > 0 && moonNow.azDeg >= 90 && moonNow.azDeg <= 270;
+  const bothOffArc = !sunVis && !moonVis;
+  drawSkyBody(sunNow, 'sun', eNorm, groundY - 14);
+  drawSkyBody(moonNow, 'moon', eNorm, bothOffArc ? groundY - 38 : groundY - 14);
 
   // ── Дата и время в углах ──
-  hctx.fillStyle = 'rgba(139, 145, 168, 0.95)';
-  hctx.font = 'bold 13px sans-serif';
-  hctx.textAlign = 'left';
-  hctx.fillText(formatDateShort(data.date), 16, 26);
-
-  hctx.fillStyle = 'rgba(232, 233, 240, 0.85)';
-  hctx.font = 'bold 18px monospace';
-  hctx.textAlign = 'right';
-  hctx.fillText(formatSliderHour(time), W - 16, 28);
+  drawOutlinedText(hctx, formatDateShort(data.date), 16, 28, '#dbe0f2', 'bold 16px sans-serif', 'left');
+  drawOutlinedText(hctx, formatSliderHour(time), W - 16, 30, '#f0f2f8', 'bold 22px monospace', 'right');
 
   // ── Нижняя панель ──
   hctx.fillStyle = '#0d111a';
@@ -858,116 +1045,131 @@ function drawHorizon() {
   hctx.lineTo(W, groundY);
   hctx.stroke();
 
-  hctx.fillStyle = '#8b91a8';
-  hctx.font = '11px sans-serif';
+  hctx.fillStyle = '#9aa0b5';
+  hctx.font = 'bold 13px sans-serif';
   hctx.textAlign = 'center';
-  hctx.fillText(h.canvas_east || 'EAST', 42, groundY + 16, 72);
-  hctx.fillText(h.canvas_south || 'SOUTH', W / 2, groundY + 16, 72);
-  hctx.fillText(h.canvas_west || 'WEST', W - 42, groundY + 16, 72);
+  hctx.fillText(h.canvas_east || 'EAST', 42, groundY + 20, 76);
+  hctx.fillText(h.canvas_south || 'SOUTH', W / 2, groundY + 20, 76);
+  hctx.fillText(h.canvas_west || 'WEST', W - 42, groundY + 20, 76);
 
   const sunW = h.horizon_sun_label || 'Sun';
   const moonW = h.canvas_moon || 'Moon';
-  const riseW = h.horizon_rise_word || 'rise';
-  const setW = h.horizon_set_word || 'set';
-  const transW = h.horizon_transit_word || 'culmination';
+  const colRise = h.horizon_col_rise || 'Rise';
+  const colCulm = h.horizon_col_culm || 'Culmination';
+  const colSet = h.horizon_col_set || 'Set';
 
-  hctx.font = 'bold 11px sans-serif';
-  hctx.fillStyle = '#f5b73e';
-  hctx.textAlign = 'left';
-  hctx.fillText(`${sunW} ${riseW} ${formatClockJD(data.sunRise)}`, 50, groundY + 36, 150);
+  // Таблица телеметрии: заголовки столбцов + строки Солнца и Луны с крупным читаемым шрифтом
+  const colX = [164, 298, 430];
+  hctx.fillStyle = '#8b91a8';
+  hctx.font = '13px sans-serif';
   hctx.textAlign = 'center';
-  hctx.fillText(`${sunW} ${transW} ${formatClockJD(data.sunTransit)}`, W / 2, groundY + 36, 160);
-  hctx.textAlign = 'right';
-  hctx.fillText(`${sunW} ${setW} ${formatClockJD(data.sunSet)}`, W - 50, groundY + 36, 150);
+  hctx.fillText(colRise, colX[0], groundY + 44, 126);
+  hctx.fillText(colCulm, colX[1], groundY + 44, 134);
+  hctx.fillText(colSet, colX[2], groundY + 44, 126);
+
+  const sunRowY = groundY + 68;
+  const moonRowY = groundY + 95;
+
+  hctx.font = 'bold 14.5px sans-serif';
+  hctx.textAlign = 'left';
+  hctx.fillStyle = '#f5b73e';
+  hctx.fillText(sunW, 14, sunRowY, 78);
+  hctx.fillStyle = '#7f9cf5';
+  hctx.fillText(moonW, 14, moonRowY, 78);
+
+  hctx.font = 'bold 15px sans-serif';
+  hctx.textAlign = 'center';
+  hctx.fillStyle = '#f5b73e';
+  hctx.fillText(formatClockJD(data.sunRise), colX[0], sunRowY, 126);
+  hctx.fillText(formatClockJD(data.sunTransit), colX[1], sunRowY, 134);
+  hctx.fillText(formatClockJD(data.sunSet), colX[2], sunRowY, 126);
 
   hctx.fillStyle = '#7f9cf5';
-  hctx.textAlign = 'left';
-  hctx.fillText(`${moonW} ${riseW} ${formatClockJD(data.moonRise)}`, 50, groundY + 54, 150);
-  hctx.textAlign = 'center';
-  hctx.fillText(`${moonW} ${transW} ${formatClockJD(data.moonTransit)}`, W / 2, groundY + 54, 160);
-  hctx.textAlign = 'right';
-  hctx.fillText(`${moonW} ${setW} ${formatClockJD(data.moonSet)}`, W - 50, groundY + 54, 150);
+  hctx.fillText(formatHorizonMetricJD(data.moonRiseDisplay), colX[0], moonRowY, 128);
+  hctx.fillText(formatHorizonMetricJD(data.moonTransitDisplay), colX[1], moonRowY, 134);
+  hctx.fillText(formatHorizonMetricJD(data.moonSetDisplay), colX[2], moonRowY, 128);
 
   // ── 24-часовая лента ──
-  const tlX = 64;
-  const tlW = W - 80;
-  const tlTop = groundY + 68;
+  const tlX = 82;
+  const tlW = W - 98;
+  const tlTop = groundY + 120;
   const sunBarY = tlTop + 14;
-  const moonBarY = tlTop + 34;
-  const barH = 13;
+  const moonBarY = tlTop + 40;
+  const barH = 18;
 
-  hctx.fillStyle = '#6b7190';
-  hctx.font = '10.5px sans-serif';
+  hctx.fillStyle = '#8b91a8';
+  hctx.font = '13.5px sans-serif';
   hctx.textAlign = 'left';
-  hctx.fillText(h.canvas_timeline_24h || 'Above horizon (24h)', tlX, tlTop + 2, tlW - 95);
+  hctx.fillText(h.canvas_timeline_24h || 'Above horizon (24h)', tlX, tlTop + 2, tlW - 110);
 
   hctx.textAlign = 'right';
   hctx.fillStyle = '#7fd1ae';
-  hctx.fillText(`${h.horizon_fact_label || 'Fact'}: ${formatDateShort(data.date)}`, tlX + tlW, tlTop + 2, 95);
+  hctx.font = 'bold 13.5px sans-serif';
+  hctx.fillText(`${h.horizon_fact_label || 'Fact'}: ${formatDateShort(data.date)}`, tlX + tlW, tlTop + 2, 110);
 
-  hctx.font = '10.5px sans-serif';
+  hctx.font = 'bold 14px sans-serif';
   hctx.textAlign = 'right';
   hctx.fillStyle = '#f5b73e';
-  hctx.fillText(sunW, tlX - 8, sunBarY + 11, 52);
+  hctx.fillText(sunW, tlX - 10, sunBarY + 14, 68);
   hctx.fillStyle = '#e8e6d8';
-  hctx.fillText(moonW, tlX - 8, moonBarY + 11, 52);
+  hctx.fillText(moonW, tlX - 10, moonBarY + 14, 68);
 
   hctx.fillStyle = '#141828';
   hctx.fillRect(tlX, sunBarY, tlW, barH);
   hctx.fillRect(tlX, moonBarY, tlW, barH);
 
   // Сумерки (гражданские, Солнце ниже −6°) — подсветка за полосой Солнца
-  hctx.fillStyle = 'rgba(245, 183, 62, 0.2)';
+  hctx.fillStyle = 'rgba(245, 183, 62, 0.22)';
   for (const [s, e] of data.civilSegments) {
-    hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 2, ((e - s) / 24) * tlW, barH - 4);
+    hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 3, ((e - s) / 24) * tlW, barH - 6);
   }
-  hctx.fillStyle = 'rgba(120, 140, 200, 0.18)';
+  hctx.fillStyle = 'rgba(120, 140, 200, 0.2)';
   for (const [s, e] of data.nauticalSegments || []) {
-    hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 2, ((e - s) / 24) * tlW, barH - 4);
+    hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 3, ((e - s) / 24) * tlW, barH - 6);
   }
 
   hctx.fillStyle = 'rgba(245, 183, 62, 0.85)';
   for (const [s, e] of data.sunSegments) {
-    hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 2, ((e - s) / 24) * tlW, barH - 4);
+    hctx.fillRect(tlX + (s / 24) * tlW, sunBarY + 3, ((e - s) / 24) * tlW, barH - 6);
   }
 
   const isNearSun = eNorm <= 7 || eNorm >= 353;
   hctx.fillStyle = isNearSun ? 'rgba(139, 145, 168, 0.45)' : 'rgba(127, 156, 245, 0.85)';
   for (const [s, e] of data.moonSegments) {
-    hctx.fillRect(tlX + (s / 24) * tlW, moonBarY + 2, ((e - s) / 24) * tlW, barH - 4);
+    hctx.fillRect(tlX + (s / 24) * tlW, moonBarY + 3, ((e - s) / 24) * tlW, barH - 6);
   }
 
-  hctx.font = '10px monospace';
+  hctx.font = '13px monospace';
   hctx.textAlign = 'center';
   for (let hr = 0; hr <= 24; hr += 6) {
     const gx = tlX + (hr / 24) * tlW;
-    hctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    hctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     hctx.lineWidth = 1;
     hctx.beginPath();
     hctx.moveTo(gx, sunBarY);
     hctx.lineTo(gx, moonBarY + barH);
     hctx.stroke();
 
-    hctx.fillStyle = '#6b7190';
-    hctx.fillText(String(hr).padStart(2, '0'), gx, moonBarY + barH + 13);
+    hctx.fillStyle = '#8b91a8';
+    hctx.fillText(String(hr).padStart(2, '0'), gx, moonBarY + barH + 17);
   }
 
   const curX = tlX + (time / 24) * tlW;
   hctx.strokeStyle = '#ffffff';
-  hctx.lineWidth = 2;
+  hctx.lineWidth = 2.5;
   hctx.beginPath();
-  hctx.moveTo(curX, sunBarY - 3);
-  hctx.lineTo(curX, moonBarY + barH + 3);
+  hctx.moveTo(curX, sunBarY - 4);
+  hctx.lineTo(curX, moonBarY + barH + 4);
   hctx.stroke();
 
   // Легенда сумерок
-  const legendY = H - 11;
-  hctx.fillStyle = 'rgba(245, 183, 62, 0.35)';
-  hctx.fillRect(16, legendY - 7, 12, 8);
-  hctx.fillStyle = '#6b7190';
-  hctx.font = '9.5px sans-serif';
+  const legendY = H - 14;
+  hctx.fillStyle = 'rgba(245, 183, 62, 0.4)';
+  hctx.fillRect(16, legendY - 10, 14, 10);
+  hctx.fillStyle = '#8b91a8';
+  hctx.font = '13px sans-serif';
   hctx.textAlign = 'left';
-  hctx.fillText(h.horizon_twilight_label || 'twilight (−6°)', 33, legendY);
+  hctx.fillText(h.horizon_twilight_label || 'twilight (−6°)', 36, legendY, W - 52);
 }
 
 /* ═══════════ ПАНЕЛИ РАЗДЕЛА «ВОСХОД И ЗАХОД» ═══════════ */
@@ -1000,27 +1202,31 @@ function drawHorizonDrift() {
   }
   if (!items.length) return;
 
-  const padL = 26;
-  const padR = 10;
-  const padT = 20;
-  const padB = 26;
+  const padL = 16;
+  const padR = 16;
+  const padT = 44;
+  const padB = 34;
   const maxMin = Math.max(20, ...items.map((it) => it.min));
   const avg = items.reduce((a, b) => a + b.min, 0) / items.length;
   const barW = (W - padL - padR) / items.length;
   const yOf = (m) => padT + (1 - m / maxMin) * (H - padT - padB);
 
-  g.strokeStyle = 'rgba(255,255,255,0.12)';
-  g.setLineDash([3, 3]);
+  g.fillStyle = '#8b91a8';
+  g.font = '13.5px sans-serif';
+  g.textAlign = 'left';
+  g.fillText(`${h.horizon_drift_avg || 'average'} ${formatSignedMinutes(avg)}`, padL, 20, W * 0.6);
+
+  g.textAlign = 'right';
+  g.fillText(h.horizon_drift_unit || 'min/day', W - padR, 20, W * 0.35);
+
+  g.strokeStyle = 'rgba(255,255,255,0.22)';
+  g.lineWidth = 1.5;
+  g.setLineDash([4, 4]);
   g.beginPath();
   g.moveTo(padL, yOf(avg));
   g.lineTo(W - padR, yOf(avg));
   g.stroke();
   g.setLineDash([]);
-
-  g.fillStyle = '#8b91a8';
-  g.font = '9.5px sans-serif';
-  g.textAlign = 'right';
-  g.fillText(`${h.horizon_drift_avg || 'average'} ${Math.round(avg)}`, W - padR, yOf(avg) - 4);
 
   items.forEach((it, i) => {
     const x = padL + i * barW + barW * 0.2;
@@ -1030,20 +1236,13 @@ function drawHorizonDrift() {
     g.fillStyle = standstill ? 'rgba(127, 209, 174, 0.85)' : 'rgba(245, 164, 127, 0.85)';
     g.fillRect(x, y, bw, (H - padB) - y);
 
-    g.fillStyle = '#c9cde0';
-    g.font = 'bold 10px sans-serif';
+    drawOutlinedText(g, `${it.min > 0 ? '+' : ''}${it.min}`, x + bw / 2, y - 6, '#e8e9f0', 'bold 14.5px sans-serif', 'center', barW - 2);
+
+    g.fillStyle = '#9aa0b5';
+    g.font = '13.5px sans-serif';
     g.textAlign = 'center';
-    g.fillText(`${it.min > 0 ? '+' : ''}${it.min}`, x + bw / 2, y - 4);
-
-    g.fillStyle = '#8b91a8';
-    g.font = '9.5px sans-serif';
-    g.fillText(formatDateShort(it.date), x + bw / 2, H - padB + 12);
+    g.fillText(formatDateShort(it.date), x + bw / 2, H - 10, barW - 2);
   });
-
-  g.fillStyle = '#6b7190';
-  g.font = '9px sans-serif';
-  g.textAlign = 'right';
-  g.fillText(h.horizon_drift_unit || 'min/day', W - padR, 11);
 }
 
 function setHorizonDate(date) {
@@ -1064,6 +1263,21 @@ function setHorizonDate(date) {
   drawHorizon();
 }
 
+function createMetricCell(label, val, valColor) {
+  const cell = document.createElement('div');
+  cell.className = 'phase-metric-row';
+  const lblEl = document.createElement('span');
+  lblEl.className = 'phase-metric-label';
+  lblEl.textContent = label;
+  const valEl = document.createElement('span');
+  valEl.className = 'phase-metric-val';
+  valEl.textContent = val;
+  if (valColor) valEl.style.color = valColor;
+  cell.appendChild(lblEl);
+  cell.appendChild(valEl);
+  return cell;
+}
+
 function updateHorizonPanels() {
   const h = hDict();
   const data = computeHorizonData(horizonDate);
@@ -1079,24 +1293,75 @@ function updateHorizonPanels() {
   const riseW = h.horizon_rise_word || 'rise';
   const setW = h.horizon_set_word || 'set';
   const transW = h.horizon_transit_word || 'culmination';
+  const colRise = h.horizon_col_rise || 'Rise';
+  const colCulm = h.horizon_col_culm || 'Culmination';
+  const colSet = h.horizon_col_set || 'Set';
+
+  const coordsBadge = document.getElementById('horizonCoordsBadge');
+  if (coordsBadge) {
+    coordsBadge.textContent = `${formatDateShort(data.date)} · ${data.latDeg.toFixed(2)}°, ${data.lonDeg.toFixed(2)}°`;
+  }
 
   const obsEl = document.getElementById('horizonObserverInfo');
   if (obsEl) {
-    obsEl.textContent =
-      `${formatDateShort(data.date)} · ${data.latDeg.toFixed(2)}°, ${data.lonDeg.toFixed(2)}°: ` +
-      `${moonW} — ${riseW} ${formatClockJD(data.moonRise)}, ${setW} ${formatClockJD(data.moonSet)}; ` +
-      `${sunW} — ${riseW} ${formatClockJD(data.sunRise)}, ${setW} ${formatClockJD(data.sunSet)}.`;
+    obsEl.textContent = '';
+    const list = document.createElement('div');
+    list.className = 'body-summary-list';
+
+    const buildBodyRow = (dotCls, name, rStr, cStr, sStr, color) => {
+      const row = document.createElement('div');
+      row.className = 'body-summary-row';
+      const head = document.createElement('div');
+      head.className = 'body-summary-name';
+      const dot = document.createElement('span');
+      dot.className = `body-dot ${dotCls}`;
+      const nm = document.createElement('span');
+      nm.textContent = name;
+      head.appendChild(dot);
+      head.appendChild(nm);
+
+      const grid = document.createElement('div');
+      grid.className = 'triple-metrics';
+      grid.appendChild(createMetricCell(colRise, rStr, color));
+      grid.appendChild(createMetricCell(colCulm, cStr, color));
+      grid.appendChild(createMetricCell(colSet, sStr, color));
+      row.appendChild(head);
+      row.appendChild(grid);
+      return row;
+    };
+
+    list.appendChild(
+      buildBodyRow(
+        'sun',
+        sunW,
+        formatClockJD(data.sunRise),
+        formatClockJD(data.sunTransit),
+        formatClockJD(data.sunSet),
+        'var(--gold)'
+      )
+    );
+    list.appendChild(
+      buildBodyRow(
+        'moon',
+        moonW,
+        formatHorizonMetricJD(data.moonRiseDisplay),
+        formatHorizonMetricJD(data.moonTransitDisplay),
+        formatHorizonMetricJD(data.moonSetDisplay),
+        'var(--blue)'
+      )
+    );
+    obsEl.appendChild(list);
   }
 
   const nextEl = document.getElementById('horizonNextEvent');
   if (nextEl) {
     const collect = (d) => ([
-      { jd: d.sunRise, text: `${sunW} ${riseW}` },
-      { jd: d.sunTransit, text: `${sunW} ${transW}` },
-      { jd: d.sunSet, text: `${sunW} ${setW}` },
-      { jd: d.moonRise, text: `${moonW} ${riseW}` },
-      { jd: d.moonTransit, text: `${moonW} ${transW}` },
-      { jd: d.moonSet, text: `${moonW} ${setW}` }
+      { jd: d.sunRise, text: `${sunW} — ${riseW}` },
+      { jd: d.sunTransit, text: `${sunW} — ${transW}` },
+      { jd: d.sunSet, text: `${sunW} — ${setW}` },
+      { jd: d.moonRise, text: `${moonW} — ${riseW}` },
+      { jd: d.moonTransit, text: `${moonW} — ${transW}` },
+      { jd: d.moonSet, text: `${moonW} — ${setW}` }
     ]);
     const tomorrow = new Date(
       data.date.getFullYear(), data.date.getMonth(), data.date.getDate() + 1
@@ -1113,13 +1378,11 @@ function updateHorizonPanels() {
         data.date.getFullYear(), data.date.getMonth(), data.date.getDate() + 1
       ));
       nextEl.textContent =
-        `${h.horizon_next_event_label || 'Next event'}: ${ev.text} ` +
-        `${formatDateShort(fromJulianDay(ev.jd))} ${formatClockJD(ev.jd)} — ` +
-        `${h.horizon_after_label || 'in'} ${formatMinutesDelta(delta)}` +
-        (isTomorrow ? ` (${h.horizon_tomorrow_word || 'tomorrow'})` : '') + '.';
+        `${ev.text} · ${formatDateShort(fromJulianDay(ev.jd))} ${formatClockJD(ev.jd)} ` +
+        `(${h.horizon_after_label || 'in'} ${formatMinutesDelta(delta)}` +
+        (isTomorrow ? `, ${h.horizon_tomorrow_word || 'tomorrow'}` : '') + ').';
     } else {
-      nextEl.textContent =
-        `${h.horizon_next_event_label || 'Next event'}: ${h.horizon_no_more_events || 'no more events today'}.`;
+      nextEl.textContent = h.horizon_no_more_events || 'no more events today';
     }
   }
 
@@ -1131,10 +1394,19 @@ function updateHorizonPanels() {
       lun.intervals[lun.intervals.length - 1];
     const sD = fromJulianDay(iv.startJD);
     const eD = fromJulianDay(iv.endJD);
-    linkEl.textContent =
-      `${h.horizon_lunar_link_label || 'Lunar day'}: ${iv.day} — ` +
-      `${formatDateShort(sD)} ${formatClock(sD)} → ${formatDateShort(eD)} ${formatClock(eD)}. ` +
-      `${h.horizon_lunar_link_note || 'Lunar days run from moonrise to moonrise.'}`;
+    linkEl.textContent = '';
+    const line1 = document.createElement('div');
+    line1.style.color = 'var(--text)';
+    line1.style.fontWeight = '600';
+    line1.textContent =
+      `${h.horizon_lunar_link_label || 'Lunar day'} ${iv.day}: ` +
+      `${formatDateShort(sD)} ${formatClock(sD)} → ${formatDateShort(eD)} ${formatClock(eD)}`;
+    const line2 = document.createElement('div');
+    line2.className = 'step-subnote';
+    line2.style.marginTop = '3px';
+    line2.textContent = h.horizon_lunar_link_note || 'Lunar days run from moonrise to moonrise.';
+    linkEl.appendChild(line1);
+    linkEl.appendChild(line2);
   }
 
   const driftEl = document.getElementById('horizonDriftNote');
@@ -1154,15 +1426,27 @@ function updateHorizonPanels() {
       if (minD === null || min < minD.min) minD = { min };
       if (maxD === null || min > maxD.max) maxD = { max: min };
     }
-    const parts = [];
-    if (firstDrift !== null) {
-      parts.push(`${h.horizon_drift_tomorrow || 'Tomorrow'} ${formatSignedMinutes(firstDrift)}`);
-    }
-    if (n) {
-      parts.push(`${h.horizon_drift_avg || 'average'} ${formatSignedMinutes(sum / n)}`);
-      parts.push(`${h.horizon_drift_range || 'range'} ${formatSignedMinutes(minD.min)}…${formatSignedMinutes(maxD.max)}`);
-    }
-    driftEl.textContent = parts.join(' · ');
+    driftEl.textContent = '';
+    driftEl.appendChild(
+      createMetricCell(
+        h.horizon_drift_tomorrow_label || h.horizon_drift_tomorrow || 'Tomorrow',
+        firstDrift !== null ? formatSignedMinutes(firstDrift) : '—',
+        'var(--orange)'
+      )
+    );
+    driftEl.appendChild(
+      createMetricCell(
+        h.horizon_drift_avg_label || h.horizon_drift_avg || 'Average',
+        n ? formatSignedMinutes(sum / n) : '—',
+        'var(--teal)'
+      )
+    );
+    driftEl.appendChild(
+      createMetricCell(
+        h.horizon_drift_range_label || h.horizon_drift_range || 'Range',
+        n ? `${minD.min > 0 ? '+' : '−'}${Math.abs(minD.min)}…${maxD.max > 0 ? '+' : '−'}${Math.abs(maxD.max)}` : '—'
+      )
+    );
   }
 
   const tipEl = document.getElementById('horizonTip');
@@ -1170,15 +1454,15 @@ function updateHorizonPanels() {
     const elong = elongAt(data.date);
     const parts = [];
     parts.push(
-      `${formatDateShort(data.date)}: ${sunW} ${riseW} ${formatClockJD(data.sunRise)}, ` +
+      `${formatDateShort(data.date)}: ${sunW} — ${riseW} ${formatClockJD(data.sunRise)}, ` +
       `${setW} ${formatClockJD(data.sunSet)}; ${moonW} (${h.horizon_elong_word || 'elongation'} ` +
-      `${Math.round(elong)}°) ${riseW} ${formatClockJD(data.moonRise)}`
+      `${Math.round(elong)}°) — ${riseW} ${formatHorizonMetricJD(data.moonRiseDisplay)}`
     );
     if (data.sunRise !== null && data.moonRise !== null) {
       const diff = Math.round((data.moonRise - data.sunRise) * 24 * 60);
       parts.push(
-        `— ${formatMinutesDelta(Math.abs(diff))} ` +
-        `${diff >= 0 ? (h.horizon_later_than || 'later than the Sun') : (h.horizon_earlier_than || 'earlier than the Sun')}`
+        `(${formatMinutesDelta(Math.abs(diff))} ` +
+        `${diff >= 0 ? (h.horizon_later_than || 'later than the Sun') : (h.horizon_earlier_than || 'earlier than the Sun')}).`
       );
     }
     const tomorrow = horizonDriftSeries(horizonDate, 2)[1];
@@ -1255,10 +1539,10 @@ function drawLunarDays(day) {
   const winEnd = selected.endJD + 0.6;
   const span = winEnd - winStart;
 
-  const padL = 44;
-  const padR = 12;
-  const axisH = 42;
-  const top = 24;
+  const padL = 48;
+  const padR = 14;
+  const axisH = 68;
+  const top = 34;
   const rowH = (H - top - axisH) / rowCount;
   const xOf = (jd) => padL + ((jd - winStart) / span) * (W - padL - padR);
 
@@ -1270,15 +1554,17 @@ function drawLunarDays(day) {
   const firstMid = startOfLocalDay(fromJulianDay(winStart));
   for (
     let d = new Date(firstMid.getTime());
-    toJulianDay(d) <= winEnd;
+    toJulianDay(d) <= winEnd + 1.0;
     d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
   ) {
     midnights.push(d);
   }
 
   // ── Сколько восходов в каждых календарных сутках ──
-  const riseCount = midnights.map(() => 0);
+  const riseCount = new Array(Math.max(0, midnights.length - 1)).fill(0);
   for (const iv of intervals) {
+    // Первые лунные сутки начинаются с новолуния, а не с восхода Луны.
+    if (Math.abs(iv.startJD - lun.nmPrev) < 1e-6) continue;
     for (let i = 0; i < midnights.length - 1; i++) {
       const jd0 = toJulianDay(midnights[i]);
       const jd1 = toJulianDay(midnights[i + 1]);
@@ -1294,7 +1580,8 @@ function drawLunarDays(day) {
 
   rows.forEach((iv, i) => {
     const y = top + i * rowH;
-    const barH = rowH - 12;
+    const barH = rowH - 14;
+    const barMidY = y + 5 + barH / 2;
     const x0 = xOf(iv.startJD);
     const x1 = xOf(iv.endJD);
     const isSel = iv.day === selected.day;
@@ -1308,76 +1595,94 @@ function drawLunarDays(day) {
     g.fillStyle = isSel ? 'rgba(42, 49, 82, 0.55)' : 'rgba(20, 24, 40, 0.35)';
     g.fillRect(0, y, W, rowH);
 
+    const drawX0 = Math.max(padL, x0);
+    const drawX1 = Math.min(W - padR, x1);
+    const drawW = Math.max(4, drawX1 - drawX0);
+
     g.fillStyle = isSel
       ? (standstill ? 'rgba(127, 209, 174, 0.9)' : 'rgba(127, 156, 245, 0.9)')
       : (standstill ? 'rgba(127, 209, 174, 0.35)' : 'rgba(127, 156, 245, 0.36)');
-    g.fillRect(x0, y + 4, Math.max(3, x1 - x0), barH);
+    g.fillRect(x0, y + 5, Math.max(4, x1 - x0), barH);
+
+    // Номер лунных суток слева от полосы
+    g.fillStyle = isSel ? '#f0f2f8' : '#9aa0b5';
+    g.font = 'bold 16px sans-serif';
+    g.textAlign = 'right';
+    g.fillText(String(iv.day), padL - 10, barMidY + 5);
 
     // Граница суток: восход (точка) или новолуние (ромб)
     const markX = isNewMoonEnd ? x1 : x0;
     if (isNewMoonStart || isNewMoonEnd) {
       g.fillStyle = '#f5b73e';
       g.beginPath();
-      g.moveTo(markX, y + 4 + barH / 2 - 5.5);
-      g.lineTo(markX + 5, y + 4 + barH / 2);
-      g.lineTo(markX, y + 4 + barH / 2 + 5.5);
-      g.lineTo(markX - 5, y + 4 + barH / 2);
+      g.moveTo(markX, barMidY - 7);
+      g.lineTo(markX + 6.5, barMidY);
+      g.lineTo(markX, barMidY + 7);
+      g.lineTo(markX - 6.5, barMidY);
       g.closePath();
       g.fill();
-      g.fillStyle = '#f5b73e';
-      g.font = '8.5px sans-serif';
-      g.textAlign = 'left';
-      g.fillText(h.days_new_moon || 'new moon', markX + 8, y + 4 + barH / 2 + 3);
+      const nmAlign = isNewMoonEnd && markX > W - 120 ? 'right' : 'left';
+      const nmX = nmAlign === 'right' ? markX - 10 : markX + 10;
+      drawOutlinedText(g, h.days_new_moon || 'new moon', nmX, barMidY + 5, '#f5b73e', 'bold 13.5px sans-serif', nmAlign, 120);
     } else {
       g.fillStyle = isToday ? '#7fd1ae' : '#f5a47f';
       g.beginPath();
-      g.arc(x0, y + 4 + barH / 2, 4.5, 0, Math.PI * 2);
+      g.arc(x0, barMidY, 5.5, 0, Math.PI * 2);
       g.fill();
     }
 
-    g.fillStyle = isSel ? '#e8e9f0' : '#8b91a8';
-    g.font = '11px sans-serif';
-    g.textAlign = 'right';
-    g.fillText(String(iv.day), padL - 8, y + 4 + barH / 2 + 4);
+    // Длительность и сдвиг внутри видимой части полосы (без перекрытия)
+    const durText = formatDurationMs(durMin * MS_PER_MIN);
+    if (drawW >= 95 && x1 >= padL + 75) {
+      drawOutlinedText(g, durText, Math.min(x1, W - padR) - 8, barMidY + 5, isSel ? '#ffffff' : '#c9cde0', 'bold 14px sans-serif', 'right', 110);
+    }
 
-    g.fillStyle = isSel ? '#e8e9f0' : '#9aa0b5';
-    g.font = 'bold 10px sans-serif';
-    g.textAlign = 'right';
-    g.fillText(formatDurationMs(durMin * MS_PER_MIN), x1 - 5, y + 4 + barH / 2 + 3.5);
-
-    if (stepMin !== null) {
-      g.fillStyle = standstill ? '#7fd1ae' : '#f5a47f';
-      g.font = 'bold 9.5px sans-serif';
-      g.textAlign = 'left';
-      g.fillText(`${stepMin > 0 ? '+' : ''}${stepMin}`, x0 + 7, y + 4 + barH / 2 + 3.5);
+    if (stepMin !== null && x0 >= padL - 2 && drawW >= 150) {
+      drawOutlinedText(g, `${stepMin > 0 ? '+' : ''}${stepMin}`, x0 + 10, barMidY + 5, standstill ? '#7fd1ae' : '#f5a47f', 'bold 14px sans-serif', 'left', 48);
     }
   });
 
   // ── Сетка календаря ──
   const axisTop = H - axisH;
   midnights.forEach((d, i) => {
-    const x = xOf(toJulianDay(d));
-    g.strokeStyle = 'rgba(255,255,255,0.13)';
-    g.lineWidth = 1;
-    g.beginPath();
-    g.moveTo(x, top - 8);
-    g.lineTo(x, axisTop + 4);
-    g.stroke();
+    const jd0 = toJulianDay(d);
+    const x = xOf(jd0);
+    if (x >= padL && x <= W - padR) {
+      g.strokeStyle = 'rgba(255,255,255,0.14)';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(x, top - 6);
+      g.lineTo(x, axisTop + 14);
+      g.stroke();
+    }
 
-    g.fillStyle = '#8b91a8';
-    g.font = '10px sans-serif';
-    g.textAlign = 'center';
-    g.fillText(formatDateShort(d), x, axisTop + 18);
+    if (x >= padL - 8 && x <= W - 6) {
+      g.fillStyle = '#9aa0b5';
+      g.font = 'bold 14px sans-serif';
+      g.textAlign = 'center';
+      g.fillText(formatDateShort(d), x, axisTop + 32);
+    }
 
-    if (i < riseCount.length) {
-      if (riseCount[i] === 0) {
-        g.fillStyle = '#d9736a';
-        g.font = '9px sans-serif';
-        g.fillText(h.days_no_rise || 'no rise', x, axisTop + 32);
-      } else if (riseCount[i] >= 2) {
-        g.fillStyle = '#7fd1ae';
-        g.font = '9px sans-serif';
-        g.fillText(h.days_two_rises || '2 rises', x, axisTop + 32);
+    if (i < midnights.length - 1) {
+      const jd1 = toJulianDay(midnights[i + 1]);
+      const nextX = xOf(jd1);
+      const visLeft = Math.max(padL, x);
+      const visRight = Math.min(W - padR, nextX);
+      const visW = visRight - visLeft;
+      const fullyInLunation = jd0 >= lun.nmPrev - 1e-6 && jd1 <= lun.nmNext + 1e-6;
+      if (fullyInLunation && visW >= 40) {
+        const colCenter = Math.max(padL + 42, Math.min(W - 42, (visLeft + visRight) / 2));
+        if (riseCount[i] === 0) {
+          g.fillStyle = '#e57c73';
+          g.font = 'bold 13px sans-serif';
+          g.textAlign = 'center';
+          g.fillText(h.days_no_rise || 'no rise', colCenter, axisTop + 54, 110);
+        } else if (riseCount[i] >= 2) {
+          g.fillStyle = '#7fd1ae';
+          g.font = 'bold 13px sans-serif';
+          g.textAlign = 'center';
+          g.fillText(h.days_two_rises || '2 rises', colCenter, axisTop + 54, 110);
+        }
       }
     }
   });
@@ -1386,26 +1691,24 @@ function drawLunarDays(day) {
   if (jdNow > winStart && jdNow < winEnd) {
     const x = xOf(jdNow);
     g.strokeStyle = '#7fd1ae';
-    g.lineWidth = 1.5;
+    g.lineWidth = 2;
     g.setLineDash([4, 3]);
     g.beginPath();
-    g.moveTo(x, top - 8);
-    g.lineTo(x, axisTop + 4);
+    g.moveTo(x, top - 6);
+    g.lineTo(x, axisTop + 14);
     g.stroke();
     g.setLineDash([]);
 
-    // Подпись «сегодня» — у нижнего края линии, чтобы не спорить с легендой
-    g.fillStyle = '#7fd1ae';
-    g.font = 'bold 9.5px sans-serif';
-    g.textAlign = 'center';
-    g.fillText(h.days_today || 'today', x, axisTop - 5);
+    // Подпись «сегодня» — над датами оси X, чтобы не пересекаться ни с полосами, ни с числами календаря
+    const safeTodayX = Math.max(padL + 36, Math.min(W - 36, x));
+    drawOutlinedText(g, h.days_today || 'today', safeTodayX, axisTop + 11, '#7fd1ae', 'bold 13.5px sans-serif', 'center', 90);
   }
 
   // ── Условные обозначения ──
-  g.fillStyle = '#6b7190';
-  g.font = '9.5px sans-serif';
+  g.fillStyle = '#8b91a8';
+  g.font = '13px sans-serif';
   g.textAlign = 'left';
-  g.fillText(h.days_legend || 'bar = lunar day, dot = moonrise', padL, 14);
+  g.fillText(h.days_legend || 'bar = lunar day, dot = moonrise', padL, 21, W - padL - 12);
 }
 
 function updateLunarDayPanels(day) {
@@ -1420,33 +1723,72 @@ function updateLunarDayPanels(day) {
   const sD = fromJulianDay(iv.startJD);
   const eD = fromJulianDay(iv.endJD);
 
+  const selectedPillEl = document.getElementById('daysSelectedPill');
+  if (selectedPillEl) {
+    selectedPillEl.textContent = `${h.days_summary_label || 'Lunar day'} ${iv.day}`;
+  }
+
   const summaryEl = document.getElementById('lunarDaySummary');
   if (summaryEl) {
-    summaryEl.textContent =
-      `${h.days_summary_label || 'Lunar day'} ${iv.day}: ` +
+    summaryEl.textContent = '';
+    const periodLine = document.createElement('div');
+    periodLine.style.color = 'var(--text)';
+    periodLine.style.fontWeight = '600';
+    periodLine.style.marginBottom = '8px';
+    periodLine.textContent =
       `${h.days_from_label || 'from'} ${formatDateShort(sD)} ${formatClock(sD)} ` +
-      `${h.days_to_label || 'to'} ${formatDateShort(eD)} ${formatClock(eD)} · ` +
-      `${h.days_duration_label || 'duration'} ${formatDurationMs(durMin * MS_PER_MIN)}` +
-      (stepMin !== null
-        ? ` · ${h.days_step_label || 'shift per day'} ${formatSignedMinutes(stepMin)}`
-        : '');
+      `${h.days_to_label || 'to'} ${formatDateShort(eD)} ${formatClock(eD)}`;
+
+    const metrics = document.createElement('div');
+    metrics.className = 'phase-info-metrics';
+    metrics.appendChild(
+      createMetricCell(
+        h.days_duration_label || 'Duration',
+        formatDurationMs(durMin * MS_PER_MIN),
+        'var(--blue)'
+      )
+    );
+    metrics.appendChild(
+      createMetricCell(
+        h.days_step_label || 'Shift per day',
+        stepMin !== null ? formatSignedMinutes(stepMin) : '—',
+        stepMin !== null && Math.abs(stepMin) < 15 ? 'var(--teal)' : 'var(--orange)'
+      )
+    );
+    summaryEl.appendChild(periodLine);
+    summaryEl.appendChild(metrics);
   }
+
+  const jdNow = toJulianDay(new Date());
+  const cur =
+    intervals.find((x) => jdNow >= x.startJD && jdNow < x.endJD) ||
+    intervals[intervals.length - 1];
+  const isSel = cur.day === iv.day;
+
+  const todayCardEl = document.getElementById('daysTodayCard');
+  const todayPillEl = document.getElementById('daysTodayPill');
+  if (todayCardEl) todayCardEl.classList.toggle('is-highlighted', isSel);
+  if (todayPillEl) todayPillEl.classList.toggle('gold', isSel);
 
   const todayEl = document.getElementById('lunarDayToday');
   if (todayEl) {
-    const jdNow = toJulianDay(new Date());
-    const cur =
-      intervals.find((x) => jdNow >= x.startJD && jdNow < x.endJD) ||
-      intervals[intervals.length - 1];
     const cS = fromJulianDay(cur.startJD);
     const cE = fromJulianDay(cur.endJD);
-    const isSel = cur.day === iv.day;
-    todayEl.textContent =
-      `${h.days_today_prefix || 'Today'}: ${h.days_summary_label || 'lunar day'} ${cur.day} ` +
-      `(${formatDateShort(cS)} ${formatClock(cS)} → ${formatDateShort(cE)} ${formatClock(cE)}). ` +
-      (isSel
-        ? (h.days_today_is_selected || 'This is the day shown above.')
-        : (h.days_today_other || 'Move the slider to it.'));
+    todayEl.textContent = '';
+    const line1 = document.createElement('div');
+    line1.style.color = 'var(--text)';
+    line1.style.fontWeight = '600';
+    line1.textContent =
+      `${h.days_summary_label || 'Lunar day'} ${cur.day}: ` +
+      `${formatDateShort(cS)} ${formatClock(cS)} → ${formatDateShort(cE)} ${formatClock(cE)}`;
+    const line2 = document.createElement('div');
+    line2.className = 'step-subnote';
+    line2.style.marginTop = '4px';
+    line2.textContent = isSel
+      ? (h.days_today_is_selected || 'This is the day shown above.')
+      : (h.days_today_other || 'Move the slider to it.');
+    todayEl.appendChild(line1);
+    todayEl.appendChild(line2);
   }
 
   const explainEl = document.getElementById('lunarDayExplain');
@@ -1466,12 +1808,34 @@ function updateLunarDayPanels(day) {
       if (maxS === null || st > maxS.max) maxS = { max: st, day: intervals[i].day };
     }
     const avg = n ? sum / n : 0;
-    explainEl.textContent =
-      `${h.days_explain_label || 'Shift per day in this cycle'}: ` +
-      `${formatSignedMinutes(minS.min)} (${h.days_day_word || 'day'} ${minS.day}) … ` +
-      `${formatSignedMinutes(maxS.max)} (${h.days_day_word || 'day'} ${maxS.day}), ` +
-      `${h.days_explain_avg || 'average'} ${formatSignedMinutes(avg)}. ` +
-      `${h.days_explain_cause || 'The Moon moves around the Earth unevenly and its declination changes unevenly, so the shift is not constant.'}`;
+    explainEl.textContent = '';
+
+    const metrics = document.createElement('div');
+    metrics.className = 'phase-info-metrics';
+    metrics.style.borderTop = 'none';
+    metrics.style.paddingTop = '0';
+    metrics.style.marginBottom = '8px';
+    metrics.appendChild(
+      createMetricCell(
+        h.horizon_drift_range_label || h.horizon_drift_range || 'Range',
+        minS && maxS
+          ? `${formatSignedMinutes(minS.min)} … ${formatSignedMinutes(maxS.max)}`
+          : '—',
+        'var(--orange)'
+      )
+    );
+    metrics.appendChild(
+      createMetricCell(
+        h.days_explain_avg || 'Average',
+        n ? formatSignedMinutes(avg) : '—',
+        'var(--teal)'
+      )
+    );
+
+    const body = document.createElement('div');
+    body.textContent = h.days_explain_cause || 'The Moon moves around the Earth unevenly and its declination changes unevenly, so the shift is not constant.';
+    explainEl.appendChild(metrics);
+    explainEl.appendChild(body);
   }
 }
 
@@ -1540,7 +1904,7 @@ function drawPersonal() {
   const relA = (currentDay - birthA + SYNODIC_MONTH) % SYNODIC_MONTH;
   const relB = (currentDay - birthB + SYNODIC_MONTH) % SYNODIC_MONTH;
 
-  const pad = { l: 120, r: 20, t: 40, b: 30 };
+  const pad = { l: 144, r: 24, t: 54, b: 48 };
   const plotW = W - pad.l - pad.r;
   const plotH = H - pad.t - pad.b;
   const cx = pad.l + plotW / 2;
@@ -1550,15 +1914,15 @@ function drawPersonal() {
   const tagB = h.canvas_user_b_short || 'B';
 
   g.textAlign = 'left';
-  g.font = 'bold 13px sans-serif';
+  g.font = 'bold 16px sans-serif';
   g.fillStyle = '#f5a47f';
-  g.fillText(`${tagA}: ${getPhaseLabel(relA)}`, 10, 20, 105);
+  g.fillText(`${tagA}: ${getPhaseLabel(relA)}`, 12, 24, 128);
   g.fillStyle = '#7f9cf5';
-  g.fillText(`${tagB}: ${getPhaseLabel(relB)}`, 10, 40, 105);
+  g.fillText(`${tagB}: ${getPhaseLabel(relB)}`, 12, 48, 128);
 
-  const moonCx = 60;
-  const moonCy = cy;
-  const moonR = 40;
+  const moonCx = 70;
+  const moonCy = cy + 10;
+  const moonR = 44;
 
   g.fillStyle = '#20222e';
   g.beginPath();
@@ -1595,32 +1959,32 @@ function drawPersonal() {
   g.strokeStyle = '#2a3152';
   g.lineWidth = 2;
   g.beginPath();
-  g.arc(moonCx, moonCy, moonR + 4, 0, Math.PI * 2);
+  g.arc(moonCx, moonCy, moonR + 5, 0, Math.PI * 2);
   g.stroke();
 
   const angleA = (birthA / 29.5) * Math.PI * 2 - Math.PI / 2;
-  const xA = moonCx + Math.cos(angleA) * (moonR + 4);
-  const yA = moonCy + Math.sin(angleA) * (moonR + 4);
+  const xA = moonCx + Math.cos(angleA) * (moonR + 5);
+  const yA = moonCy + Math.sin(angleA) * (moonR + 5);
 
   const angleB = (birthB / 29.5) * Math.PI * 2 - Math.PI / 2;
-  const xB = moonCx + Math.cos(angleB) * (moonR + 4);
-  const yB = moonCy + Math.sin(angleB) * (moonR + 4);
+  const xB = moonCx + Math.cos(angleB) * (moonR + 5);
+  const yB = moonCy + Math.sin(angleB) * (moonR + 5);
 
   g.fillStyle = '#f5a47f';
   g.beginPath();
-  g.arc(xA, yA, 6, 0, Math.PI * 2);
+  g.arc(xA, yA, 9, 0, Math.PI * 2);
   g.fill();
   g.fillStyle = '#0b0e1a';
-  g.font = 'bold 9px sans-serif';
+  g.font = 'bold 12px sans-serif';
   g.textAlign = 'center';
-  g.fillText(tagA, xA, yA + 3, 10);
+  g.fillText(tagA, xA, yA + 4, 14);
 
   g.fillStyle = '#7f9cf5';
   g.beginPath();
-  g.arc(xB, yB, 6, 0, Math.PI * 2);
+  g.arc(xB, yB, 9, 0, Math.PI * 2);
   g.fill();
   g.fillStyle = '#0b0e1a';
-  g.fillText(tagB, xB, yB + 3, 10);
+  g.fillText(tagB, xB, yB + 4, 14);
 
   g.strokeStyle = '#2a3152';
   g.lineWidth = 1;
@@ -1629,13 +1993,13 @@ function drawPersonal() {
   g.lineTo(pad.l + plotW, cy);
   g.stroke();
 
-  g.fillStyle = '#6b7190';
-  g.font = '10px sans-serif';
+  g.fillStyle = '#8b91a8';
+  g.font = '13.5px sans-serif';
   g.textAlign = 'center';
-  g.fillText('0', pad.l, H - 10);
-  g.fillText('15', cx, H - 10);
-  g.fillText('29.5', pad.l + plotW, H - 10);
-  g.fillText(h.canvas_cycle_days || 'Cycle days', cx, H - 2, plotW - 80);
+  g.fillText('0', pad.l, H - 27);
+  g.fillText('15', cx, H - 27);
+  g.fillText('29.5', pad.l + plotW, H - 27);
+  g.fillText(h.canvas_cycle_days || 'Cycle days', cx, H - 7, plotW);
 
   for (let d = 0; d <= 29.5; d += 7.38) {
     const x = pad.l + (d / 29.5) * plotW;
@@ -1811,7 +2175,7 @@ async function loadCustomDictOverride() {
 
   try {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      stateData = await chrome.storage.local.get(['dictionaryMode', 'customDictionary']);
+      stateData = await chrome.storage.local.get(['dictionaryMode', 'customDictionary', 'theme', 'fontSize']);
     }
   } catch {
     // Ignore extension storage unavailability
@@ -1844,6 +2208,12 @@ async function loadCustomDictOverride() {
         // Ignore malformed localStorage state
       }
     }
+  }
+
+  if (stateData) {
+    const resolvedTheme = ctx.theme || (stateData.theme === 'light' || stateData.theme === 'dark' ? stateData.theme : 'dark');
+    const resolvedFont = ctx.fontSize || (['normal', 'large', 'xlarge'].includes(stateData.fontSize) ? stateData.fontSize : 'normal');
+    applyHelpAppearance(resolvedTheme, resolvedFont);
   }
 
   const shouldUseCustom =

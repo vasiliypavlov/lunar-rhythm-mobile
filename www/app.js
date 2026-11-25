@@ -11,11 +11,14 @@ import {
   formatHM,
   fromJulianDay,
   getCalendarDayLunarSummary,
+  getBodySkyPosition,
+  getHorizonDayDetails,
   getLunarDayAt,
   getLunationIntervals,
   getMoonPhaseInfo,
   getObserverCoords,
   getPlanetLongitudes,
+  getSunPosition,
   getTimeSlot,
   getZodiacSign,
   buildLayeredAspectGraph,
@@ -54,6 +57,9 @@ const DEFAULT_PERSISTED_STATE = {
     evening: '20:30'
   },
   selectedVoiceURI: '',
+  theme: 'dark',
+  fontSize: 'normal',
+  heroMode: 'moon',
   pendingAutoplay: null,
   activeAlarm: null,
   scheduledNotificationIds: []
@@ -111,12 +117,22 @@ function mergePersistedDefaults(data) {
     rawLon >= -180 &&
     rawLon <= 180;
 
+  const theme = data && data.theme === 'light' ? 'light' : 'dark';
+  const fontSize =
+    data && (data.fontSize === 'large' || data.fontSize === 'xlarge')
+      ? data.fontSize
+      : 'normal';
+  const heroMode = data && data.heroMode === 'solar' ? 'solar' : 'moon';
+
   return {
     ...DEFAULT_PERSISTED_STATE,
     ...(data || {}),
     observerLat: hasValidCoords ? Number(rawLat.toFixed(4)) : null,
     observerLon: hasValidCoords ? Number(rawLon.toFixed(4)) : null,
     builtinLang,
+    theme,
+    fontSize,
+    heroMode,
     notifications: {
       ...DEFAULT_PERSISTED_STATE.notifications,
       ...rawNotifs,
@@ -131,6 +147,34 @@ function mergePersistedDefaults(data) {
       ? data.scheduledNotificationIds.filter((id) => Number.isFinite(id))
       : []
   };
+}
+
+function applyAppearanceSettings() {
+  const theme = appState.theme === 'light' ? 'light' : 'dark';
+  const fontSize =
+    appState.fontSize === 'large' || appState.fontSize === 'xlarge'
+      ? appState.fontSize
+      : 'normal';
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.fontSize = fontSize;
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) {
+    metaTheme.setAttribute('content', theme === 'light' ? '#f4f6f9' : '#0f1115');
+  }
+}
+
+function shadeHexColor(hex, factor) {
+  const clean = String(hex || '').replace('#', '').trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return hex || '#3f3f3f';
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  const adjust = (c) => {
+    const next = factor < 0 ? c * (1 + factor) : c + (255 - c) * factor;
+    return Math.max(0, Math.min(255, Math.round(next)));
+  };
+  const toHex = (c) => adjust(c).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 let appState = structuredClone(DEFAULT_PERSISTED_STATE);
@@ -203,7 +247,7 @@ function getLocalizedZodiacSign(dict, canonicalSign) {
   return dict.zodiac_names?.[canonicalSign] || canonicalSign;
 }
 
-function renderMoonCanvas(canvas, phaseInfo) {
+function renderMoonCanvas(canvas, phaseInfo, options = {}) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
   const h = canvas.height;
@@ -219,6 +263,7 @@ function renderMoonCanvas(canvas, phaseInfo) {
   const litR = 234;
   const litG = 179;
   const litB = 46;
+  const showDarkDisc = Boolean(options.showDarkDisc);
 
   const elongRad = (phaseInfo.elong * Math.PI) / 180;
   const sx = Math.sin(elongRad);
@@ -245,6 +290,18 @@ function renderMoonCanvas(canvas, phaseInfo) {
       const t = Math.max(0, Math.min(1, (dot + halfSoft) / softWidth));
       const litMask = t * t * (3 - 2 * t);
 
+      if (showDarkDisc) {
+        const darkR = 35;
+        const darkG = 41;
+        const darkB = 56;
+        const idx = (py * w + px) * 4;
+        data[idx] = Math.round(darkR + (litR - darkR) * litMask);
+        data[idx + 1] = Math.round(darkG + (litG - darkG) * litMask);
+        data[idx + 2] = Math.round(darkB + (litB - darkB) * litMask);
+        data[idx + 3] = Math.round(edgeAlpha * (232 + 23 * litMask));
+        continue;
+      }
+
       let rimAlpha = 0;
       if (phaseInfo.illumination < 0.08) {
         const rimStrength = (0.08 - phaseInfo.illumination) / 0.08;
@@ -270,13 +327,54 @@ function renderMoonCanvas(canvas, phaseInfo) {
   ctx.putImageData(imgData, 0, 0);
 }
 
+function renderSunCanvas(canvas, sunSky, dayHours) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const cx = w / 2;
+  const cy = h / 2;
+  const R = Math.min(w, h) * 0.43;
+  const isSubdued = dayHours <= 0.02 || (sunSky && sunSky.altDeg < -6);
+
+  const halo = ctx.createRadialGradient(cx, cy, R * 0.85, cx, cy, R * 1.15);
+  halo.addColorStop(0, isSubdued ? 'rgba(232, 168, 56, 0.24)' : 'rgba(255, 210, 74, 0.34)');
+  halo.addColorStop(0.65, isSubdued ? 'rgba(201, 111, 40, 0.10)' : 'rgba(234, 179, 46, 0.12)');
+  halo.addColorStop(1, 'rgba(234, 179, 46, 0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * 1.15, 0, Math.PI * 2);
+  ctx.fill();
+
+  const discGrad = ctx.createRadialGradient(cx - R * 0.14, cy - R * 0.16, R * 0.08, cx, cy, R);
+  if (isSubdued) {
+    discGrad.addColorStop(0, '#f5c76b');
+    discGrad.addColorStop(0.65, '#e8a838');
+    discGrad.addColorStop(0.95, '#d17b2a');
+    discGrad.addColorStop(1, '#c26922');
+  } else {
+    discGrad.addColorStop(0, '#fff4bd');
+    discGrad.addColorStop(0.45, '#ffd859');
+    discGrad.addColorStop(0.86, '#eab32e');
+    discGrad.addColorStop(1, '#d9931c');
+  }
+
+  ctx.save();
+  ctx.fillStyle = discGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function createMiniMoonCanvas(phaseInfo) {
   const canvas = document.createElement('canvas');
   canvas.className = 'tl-moon-canvas';
-  canvas.width = 32;
-  canvas.height = 32;
+  canvas.width = 48;
+  canvas.height = 48;
   canvas.setAttribute('aria-hidden', 'true');
-  renderMoonCanvas(canvas, phaseInfo);
+  renderMoonCanvas(canvas, phaseInfo, { showDarkDisc: appState.theme === 'light' });
   return canvas;
 }
 
@@ -1960,7 +2058,11 @@ function updateStaticUILabels(dict) {
   });
 
   document.getElementById('hero-age-unit').textContent = labels.moon_age_unit;
-  document.getElementById('moon-canvas').setAttribute('aria-label', labels.hero_moon_aria);
+  const celestialToggle = document.getElementById('hero-celestial-toggle');
+  if (celestialToggle) {
+    celestialToggle.setAttribute('aria-label', labels.hero_moon_aria);
+    celestialToggle.title = labels.hero_toggle_to_solar_title || labels.hero_moon_aria;
+  }
   document.getElementById('hero-illumination').title = labels.hero_illumination_title;
 
   const copyBtn = document.getElementById('btn-copy-ai-prompt');
@@ -2563,6 +2665,28 @@ function buildSlotCardsData(baseLang, ctx) {
   ];
 }
 
+function sumHorizonSegmentsHours(segments) {
+  if (!Array.isArray(segments) || !segments.length) return 0;
+  return segments.reduce((acc, seg) => {
+    if (!Array.isArray(seg) || seg.length < 2) return acc;
+    return acc + Math.max(0, Number(seg[1]) - Number(seg[0]));
+  }, 0);
+}
+
+function formatDurationHMM(totalMinutes) {
+  const clamped = Math.max(0, Math.min(1440, Math.round(totalMinutes)));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${h}:${String(m).padStart(2, '0')}`;
+}
+
+const PERSONAL_VECTOR_SVGS = {
+  phase_rise: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3.5" y1="12.5" x2="12.5" y2="3.5"></line><polyline points="6 3.5 12.5 3.5 12.5 10"></polyline></svg>',
+  phase_peak: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="2.5" x2="13" y2="2.5"></line><line x1="8" y1="13.5" x2="8" y2="5.5"></line><polyline points="4.5 9 8 5.5 11.5 9"></polyline></svg>',
+  phase_decline: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3.5" y1="3.5" x2="12.5" y2="12.5"></line><polyline points="12.5 6 12.5 12.5 6 12.5"></polyline></svg>',
+  phase_minimum: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="13.5" x2="13" y2="13.5"></line><line x1="8" y1="2.5" x2="8" y2="10.5"></line><polyline points="4.5 7 8 10.5 11.5 7"></polyline></svg>'
+};
+
 function renderHeroAndToday(dict) {
   const labels = getUILabels(dict);
   const lang = dict.meta?.lang || 'ru-RU';
@@ -2575,21 +2699,30 @@ function renderHeroAndToday(dict) {
   const refMoment = isToday
     ? now
     : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 21, 0, 0, 0);
+  const bgMoment = isToday
+    ? now
+    : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), now.getHours(), now.getMinutes(), 0, 0);
 
   const summary = getCalendarDayLunarSummary(selectedDate, refMoment);
   const personal = appState.birthDate
     ? computePersonalState(appState.birthDate, selectedDate, refMoment, appState.birthTime)
     : null;
+  const isSolarMode = appState.heroMode === 'solar';
 
-  // Hero container background
+  // Hero container background + time-of-day radial vignette (edges darken toward night)
   const heroCard = document.getElementById('hero-card');
   const bgHex = personal ? personal.headerColor : PHASE_COLORS.neutral;
+  const sunSkyForBg = getBodySkyPosition(toJulianDay(bgMoment), 'sun');
+  const altT = Math.max(0, Math.min(1, (12 - sunSkyForBg.altDeg) / 27));
+  const nightFactor = altT * altT * (3 - 2 * altT);
+  const centerHex = shadeHexColor(bgHex, 0.06 * (1 - nightFactor));
+  const midHex = shadeHexColor(bgHex, -0.06 * nightFactor);
+  const edgeHex = shadeHexColor(bgHex, -(0.08 + 0.54 * nightFactor));
   heroCard.style.backgroundColor = bgHex;
+  heroCard.style.backgroundImage = `radial-gradient(ellipse 85% 95% at 50% 45%, ${centerHex} 0%, ${midHex} 48%, ${edgeHex} 100%)`;
+  heroCard.classList.toggle('is-solar-mode', isSolarMode);
+  heroCard.classList.toggle('has-active-alarm', Boolean(appState.activeAlarm));
   document.documentElement.style.setProperty('--hero-bg', bgHex);
-
-  // Top-left: Moon illumination with 1 decimal place
-  document.getElementById('hero-illumination').textContent =
-    `${summary.phaseInfo.illuminationExact.toFixed(1)} %`;
 
   // Bottom-left: Active alarm bell indicator
   const alarmBtn = document.getElementById('btn-active-alarm');
@@ -2603,38 +2736,179 @@ function renderHeroAndToday(dict) {
     alarmBtn.setAttribute('aria-label', labels.hero_alarm_aria);
   }
 
-  // Moon canvas
-  renderMoonCanvas(document.getElementById('moon-canvas'), summary.phaseInfo);
-
-  // Center top row: Moon age (X.X) + zodiac sign superscript + localized unit
   const sign = summary.phaseInfo.zodiacSign;
   const signName = getLocalizedZodiacSign(dict, sign);
-  document.getElementById('hero-day').textContent = summary.phaseInfo.moonAge.toFixed(1);
-  document.getElementById('hero-sup-top').textContent = signName;
-  document.getElementById('hero-age-unit').textContent = labels.moon_age_unit;
-
-  // Center bottom row: symmetrical lunar day pair with start time superscripts above both numbers
-  document.getElementById('hero-lunar-first').textContent = String(summary.firstDay);
-  document.getElementById('hero-lunar-second').textContent = String(summary.secondDay);
-  document.getElementById('hero-lunar-first-time').textContent = summary.firstDayStartTimeStr;
-  document.getElementById('hero-lunar-second-time').textContent = summary.secondDayStartTimeStr;
-  document.getElementById('hero-lunar-slot-first').classList.toggle('is-active', summary.activeIndex === 0);
-  document.getElementById('hero-lunar-slot-second').classList.toggle('is-active', summary.activeIndex === 1);
-
-  // Center third row: moonrise and moonset times for selected calendar day
-  document.getElementById('hero-moonrise').textContent = summary.moonriseStr || '--:--';
-  document.getElementById('hero-moonset').textContent = summary.moonsetStr || '--:--';
-
-  // Top-right trend glyph + exact 8-phase localized tooltip
   const trendLabel = dict.moon_trends?.[summary.phaseInfo.trend] || '';
   const detailedTrendLabel =
     dict.moon_phase_names?.[summary.phaseInfo.detailedTrend] ||
     trendLabel ||
     labels.hero_trend_title;
+
+  const moonCanvasEl = document.getElementById('moon-canvas');
+  const celestialToggleEl = document.getElementById('hero-celestial-toggle');
+  const illumEl = document.getElementById('hero-illumination');
   const trendEl = document.getElementById('hero-trend');
-  trendEl.textContent = summary.phaseInfo.trendGlyph;
-  trendEl.title = detailedTrendLabel;
-  trendEl.setAttribute('aria-label', detailedTrendLabel);
+  const heroDayEl = document.getElementById('hero-day');
+  const heroSupTopEl = document.getElementById('hero-sup-top');
+  const heroAgeUnitEl = document.getElementById('hero-age-unit');
+  const slotFirstEl = document.getElementById('hero-lunar-slot-first');
+  const slotSecondEl = document.getElementById('hero-lunar-slot-second');
+  const bottomSlashEl = document.getElementById('hero-bottom-slash');
+  const firstNumEl = document.getElementById('hero-lunar-first');
+  const secondNumEl = document.getElementById('hero-lunar-second');
+  const firstTimeEl = document.getElementById('hero-lunar-first-time');
+  const secondTimeEl = document.getElementById('hero-lunar-second-time');
+  const riseWrapEl = document.getElementById('hero-rise-wrap');
+  const transitWrapEl = document.getElementById('hero-transit-wrap');
+  const setWrapEl = document.getElementById('hero-set-wrap');
+  const polarStatusEl = document.getElementById('hero-polar-status');
+  const transitLabelEl = document.getElementById('hero-transit-label');
+  const sunTransitEl = document.getElementById('hero-sun-transit');
+  const riseValEl = document.getElementById('hero-moonrise');
+  const setValEl = document.getElementById('hero-moonset');
+
+  if (isSolarMode) {
+    const sunHorizon = getHorizonDayDetails(refMoment);
+    const sunHorizonPrev = getHorizonDayDetails(new Date(refMoment.getTime() - 86400000));
+    const dayHours = sumHorizonSegmentsHours(sunHorizon.sunSegments);
+    const prevDayHours = sumHorizonSegmentsHours(sunHorizonPrev.sunSegments);
+    const dayMins = Math.round(dayHours * 60);
+    const nightMins = Math.max(0, 1440 - dayMins);
+    const isPolarDay = dayMins >= 1440;
+    const isPolarNight = dayMins <= 0;
+
+    renderSunCanvas(moonCanvasEl, sunSkyForBg, dayHours);
+    if (celestialToggleEl) {
+      celestialToggleEl.title = labels.hero_sun_aria || labels.hero_toggle_to_solar_title;
+      celestialToggleEl.setAttribute('aria-label', labels.hero_sun_aria || labels.hero_moon_aria);
+    }
+
+    const daySharePct = (dayHours / 24) * 100;
+    const deltaMin = Math.round((dayHours - prevDayHours) * 60);
+    let solarTrendGlyph = '●';
+    let solarTrendLabel = labels.solar_trend_solstice_max || '';
+    if (isPolarDay) {
+      solarTrendGlyph = '●';
+      solarTrendLabel = labels.solar_trend_solstice_max || '';
+    } else if (isPolarNight) {
+      solarTrendGlyph = '○';
+      solarTrendLabel = labels.solar_trend_solstice_min || '';
+    } else if (deltaMin > 0) {
+      solarTrendGlyph = '▲';
+      solarTrendLabel = `${labels.solar_trend_growing || ''} (+${deltaMin} ${baseLang === 'ru' ? 'мин' : 'm'})`.trim();
+    } else if (deltaMin < 0) {
+      solarTrendGlyph = '▼';
+      solarTrendLabel = `${labels.solar_trend_shrinking || ''} (${deltaMin} ${baseLang === 'ru' ? 'мин' : 'm'})`.trim();
+    } else {
+      solarTrendGlyph = dayHours >= 12 ? '●' : '○';
+      solarTrendLabel = dayHours >= 12
+        ? (labels.solar_trend_solstice_max || '')
+        : (labels.solar_trend_solstice_min || '');
+    }
+
+    trendEl.textContent = solarTrendGlyph;
+    trendEl.title = solarTrendLabel;
+    trendEl.setAttribute('aria-label', solarTrendLabel);
+    illumEl.textContent = `${daySharePct.toFixed(1)} %`;
+    illumEl.title = `${labels.hero_solar_share_title || labels.hero_illumination_title} (${sunSkyForBg.altDeg.toFixed(1)}°)`;
+
+    const sunZodiacCanonical = getZodiacSign(getSunPosition(toJulianDay(refMoment)).lon);
+    heroDayEl.textContent = dayHours.toFixed(1);
+    heroSupTopEl.textContent = getLocalizedZodiacSign(dict, sunZodiacCanonical);
+    heroAgeUnitEl.textContent = labels.solar_day_unit || 'ч.';
+
+    if (isPolarDay || isPolarNight) {
+      bottomSlashEl.classList.add('hidden');
+      slotSecondEl.classList.add('hidden');
+      firstNumEl.textContent = isPolarDay ? '24:00' : '00:00';
+      firstTimeEl.textContent = isPolarDay
+        ? (labels.solar_day_short || 'день')
+        : (labels.solar_polar_night_short || 'полярная ночь');
+      slotFirstEl.classList.add('is-active');
+      slotSecondEl.classList.remove('is-active');
+
+      riseWrapEl.classList.add('hidden');
+      transitWrapEl.classList.add('hidden');
+      setWrapEl.classList.add('hidden');
+      polarStatusEl.classList.remove('hidden');
+      const polarTitle = isPolarDay
+        ? (labels.solar_polar_day_label || 'Полярный день')
+        : capitalizeFirst(labels.solar_polar_night_short || 'полярная ночь');
+      polarStatusEl.textContent = `${polarTitle} · ${labels.solar_transit_label || 'Юг'} ${sunHorizon.sunTransitStr || '--:--'}`;
+    } else {
+      bottomSlashEl.classList.remove('hidden');
+      slotSecondEl.classList.remove('hidden');
+      firstNumEl.textContent = formatDurationHMM(dayMins);
+      firstTimeEl.textContent = labels.solar_day_short || 'день';
+      secondNumEl.textContent = formatDurationHMM(nightMins);
+      secondTimeEl.textContent = labels.solar_night_short || 'ночь';
+
+      const isSunUpNow = sunSkyForBg.altDeg > 0;
+      slotFirstEl.classList.toggle('is-active', !isToday || isSunUpNow);
+      slotSecondEl.classList.toggle('is-active', !isToday || !isSunUpNow);
+
+      riseWrapEl.classList.remove('hidden');
+      transitWrapEl.classList.remove('hidden');
+      setWrapEl.classList.remove('hidden');
+      polarStatusEl.classList.add('hidden');
+      riseValEl.textContent = sunHorizon.sunriseStr || '--:--';
+      transitLabelEl.textContent = labels.solar_transit_label || 'Юг';
+      sunTransitEl.textContent = sunHorizon.sunTransitStr || '--:--';
+      setValEl.textContent = sunHorizon.sunsetStr || '--:--';
+    }
+  } else {
+    // Lunar Hero Mode
+    renderMoonCanvas(moonCanvasEl, summary.phaseInfo);
+    if (celestialToggleEl) {
+      celestialToggleEl.title = labels.hero_toggle_to_solar_title || labels.hero_moon_aria;
+      celestialToggleEl.setAttribute('aria-label', labels.hero_moon_aria);
+    }
+
+    illumEl.textContent = `${summary.phaseInfo.illuminationExact.toFixed(1)} %`;
+    illumEl.title = labels.hero_illumination_title;
+
+    heroDayEl.textContent = summary.phaseInfo.moonAge.toFixed(1);
+    heroSupTopEl.textContent = signName;
+    heroAgeUnitEl.textContent = labels.moon_age_unit;
+
+    bottomSlashEl.classList.remove('hidden');
+    slotSecondEl.classList.remove('hidden');
+    firstNumEl.textContent = String(summary.firstDay);
+    secondNumEl.textContent = String(summary.secondDay);
+    firstTimeEl.textContent = summary.firstDayStartTimeStr;
+    secondTimeEl.textContent = summary.secondDayStartTimeStr;
+    slotFirstEl.classList.toggle('is-active', summary.activeIndex === 0);
+    slotSecondEl.classList.toggle('is-active', summary.activeIndex === 1);
+
+    riseWrapEl.classList.remove('hidden');
+    transitWrapEl.classList.add('hidden');
+    setWrapEl.classList.remove('hidden');
+    polarStatusEl.classList.add('hidden');
+    riseValEl.textContent = summary.moonriseStr || '--:--';
+    setValEl.textContent = summary.moonsetStr || '--:--';
+
+    trendEl.textContent = summary.phaseInfo.trendGlyph;
+    trendEl.title = detailedTrendLabel;
+    trendEl.setAttribute('aria-label', detailedTrendLabel);
+  }
+
+  // Top-right personal rhythm vector (distinct inline SVG icons when birthDate is set)
+  const personalTrendEl = document.getElementById('hero-personal-trend');
+  if (personalTrendEl) {
+    if (personal) {
+      const pTitle = dict.phases?.[personal.phaseKey]?.title || '';
+      const pTooltip = pTitle
+        ? `${pTitle} · ${labels.hero_personal_trend_title || labels.hero_trend_title}`
+        : (labels.hero_personal_trend_title || labels.hero_trend_title);
+      personalTrendEl.innerHTML = PERSONAL_VECTOR_SVGS[personal.phaseKey] || PERSONAL_VECTOR_SVGS.phase_rise;
+      personalTrendEl.title = pTooltip;
+      personalTrendEl.setAttribute('aria-label', pTooltip);
+      personalTrendEl.classList.remove('hidden');
+    } else {
+      personalTrendEl.textContent = '';
+      personalTrendEl.classList.add('hidden');
+    }
+  }
 
   // Context bar above timeline: "<Phase badge> · <Date>" in State B, "<Date>" in State A
   const humanDate = formatHumanDate(selectedDate, lang);
@@ -3198,6 +3472,24 @@ function renderSettingsPanel(dict) {
     <strong>${escapeHtml(dict.meta?.name || labels.app_title)}</strong> · ${escapeHtml(labels.label_dict_lang)}: <code>${escapeHtml(dict.meta?.lang || 'ru-RU')}</code><br/>
     <span>${escapeHtml(dict.meta?.description || '')}</span>
   `;
+
+  // Appearance: Theme & Font Size
+  const isLightTheme = appState.theme === 'light';
+  const btnThemeDark = document.getElementById('theme-btn-dark');
+  const btnThemeLight = document.getElementById('theme-btn-light');
+  if (btnThemeDark) btnThemeDark.classList.toggle('active', !isLightTheme);
+  if (btnThemeLight) btnThemeLight.classList.toggle('active', isLightTheme);
+
+  const fontSize =
+    appState.fontSize === 'large' || appState.fontSize === 'xlarge'
+      ? appState.fontSize
+      : 'normal';
+  const btnFontNormal = document.getElementById('font-btn-normal');
+  const btnFontLarge = document.getElementById('font-btn-large');
+  const btnFontXlarge = document.getElementById('font-btn-xlarge');
+  if (btnFontNormal) btnFontNormal.classList.toggle('active', fontSize === 'normal');
+  if (btnFontLarge) btnFontLarge.classList.toggle('active', fontSize === 'large');
+  if (btnFontXlarge) btnFontXlarge.classList.toggle('active', fontSize === 'xlarge');
 
   void populateVoiceSelector();
 }
@@ -3991,6 +4283,17 @@ function bindEvents() {
     renderUI();
     await speakText(alarmText, getUILabels(dict).reminder_prefix_tts);
   });
+
+  // Hero Celestial Toggle (tap Moon/Sun to persist moon <-> solar mode)
+  const heroToggleBtn = document.getElementById('hero-celestial-toggle');
+  if (heroToggleBtn) {
+    heroToggleBtn.addEventListener('click', async () => {
+      const nextMode = appState.heroMode === 'solar' ? 'moon' : 'solar';
+      appState.heroMode = nextMode;
+      await stateStore.saveState({ heroMode: nextMode });
+      renderHeroAndToday(getActiveDictionary());
+    });
+  }
 
   // Copy External AI Prompt (compact 28x28 icon expanding into 2s confirmation pill)
   const copyPromptBtn = document.getElementById('btn-copy-ai-prompt');
@@ -4895,6 +5198,30 @@ function bindEvents() {
     }, 2000);
   });
 
+  // Appearance: Theme & Font Size controls
+  document.querySelectorAll('[data-theme]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const nextTheme = btn.dataset.theme === 'light' ? 'light' : 'dark';
+      if (appState.theme === nextTheme) return;
+      appState.theme = nextTheme;
+      applyAppearanceSettings();
+      await stateStore.saveState({ theme: nextTheme });
+      renderUI();
+    });
+  });
+
+  document.querySelectorAll('[data-font]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const val = btn.dataset.font;
+      const nextFont = val === 'large' || val === 'xlarge' ? val : 'normal';
+      if (appState.fontSize === nextFont) return;
+      appState.fontSize = nextFont;
+      applyAppearanceSettings();
+      await stateStore.saveState({ fontSize: nextFont });
+      renderUI();
+    });
+  });
+
   // Open standalone interactive Help page (help.html)
   const openHelpBtn = document.getElementById('btn-open-help');
   if (openHelpBtn) {
@@ -4911,6 +5238,8 @@ function bindEvents() {
       if (appState.dictionaryMode === 'custom') {
         params.set('dict', 'custom');
       }
+      params.set('theme', appState.theme === 'light' ? 'light' : 'dark');
+      params.set('font', appState.fontSize || 'normal');
       params.set('back', 'index.html#settings');
       window.location.href = `help.html?${params.toString()}`;
     });
@@ -5009,6 +5338,7 @@ async function handleAppResume() {
 
 async function init() {
   appState = await stateStore.loadState();
+  applyAppearanceSettings();
   setObserverCoords(appState.observerLat, appState.observerLon);
 
   if (!appState.builtinLang || !BUILTIN_DICTIONARIES[appState.builtinLang]) {
