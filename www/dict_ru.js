@@ -667,7 +667,12 @@ export const DICT_RU = {
     "solar_trend_growing": "Световой день увеличивается",
     "solar_trend_shrinking": "Световой день сокращается",
     "solar_trend_solstice_max": "Максимум светового дня",
-    "solar_trend_solstice_min": "Минимум светового дня"
+    "solar_trend_solstice_min": "Минимум светового дня",
+    "settings_support_title": "Проект и поддержка",
+    "settings_support_desc": "Исходный код открыт на GitHub. Если приложение помогает планировать ритм дня, вы можете поддержать развитие проекта.",
+    "btn_github_repo": "Репозиторий на GitHub",
+    "support_donate_label": "Поддержать проект",
+    "support_copied_toast": "Скопировано ✓"
   },
   "help": {
     "page_title": "Динамический справочник · Lunar Rhythm Navigator",
@@ -833,6 +838,19 @@ export const DICT_RU = {
     "days_selected_card_title": "Выбранные лунные сутки",
     "days_today_card_title": "Текущие лунные сутки",
     "days_explain_card_title": "Почему сдвиг меняется по циклу",
-    "days_selected_badge": "На графике"
+    "days_selected_badge": "На графике",
+    "phase_short_new_moon": "новолуние",
+    "phase_short_waxing_crescent": "молодая",
+    "phase_short_first_quarter": "первая четверть",
+    "phase_short_waxing_gibbous": "растущая",
+    "phase_short_full_moon": "полнолуние",
+    "phase_short_waning_gibbous": "убывающая",
+    "phase_short_last_quarter": "последняя четверть",
+    "phase_short_waning_crescent": "старая",
+    "horizon_diff_prefix": "на",
+    "days_legend_bar": "лунные сутки",
+    "days_legend_rise": "восход",
+    "days_selected_heading_tpl": "Выбраны {day} лунные сутки",
+    "days_today_heading_tpl": "Сегодня {day} лунные сутки"
   }
 };

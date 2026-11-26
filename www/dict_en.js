@@ -667,7 +667,12 @@ export const DICT_EN = {
     "solar_trend_growing": "Daylight is lengthening",
     "solar_trend_shrinking": "Daylight is shortening",
     "solar_trend_solstice_max": "Daylight maximum",
-    "solar_trend_solstice_min": "Daylight minimum"
+    "solar_trend_solstice_min": "Daylight minimum",
+    "settings_support_title": "Project & Support",
+    "settings_support_desc": "Source code is open on GitHub. If this app helps you pace your days, you can support its ongoing development.",
+    "btn_github_repo": "GitHub Repository",
+    "support_donate_label": "Support the project",
+    "support_copied_toast": "Copied ✓"
   },
   "help": {
     "page_title": "Dynamic Reference · Lunar Rhythm Navigator",
@@ -833,6 +838,19 @@ export const DICT_EN = {
     "days_selected_card_title": "Selected lunar day",
     "days_today_card_title": "Current lunar day",
     "days_explain_card_title": "Why the shift varies over the cycle",
-    "days_selected_badge": "On chart"
+    "days_selected_badge": "On chart",
+    "phase_short_new_moon": "new moon",
+    "phase_short_waxing_crescent": "waxing crescent",
+    "phase_short_first_quarter": "first quarter",
+    "phase_short_waxing_gibbous": "waxing gibbous",
+    "phase_short_full_moon": "full moon",
+    "phase_short_waning_gibbous": "waning gibbous",
+    "phase_short_last_quarter": "last quarter",
+    "phase_short_waning_crescent": "waning crescent",
+    "horizon_diff_prefix": "",
+    "days_legend_bar": "lunar day",
+    "days_legend_rise": "moonrise",
+    "days_selected_heading_tpl": "Selected lunar day {day}",
+    "days_today_heading_tpl": "Today: lunar day {day}"
   }
 };

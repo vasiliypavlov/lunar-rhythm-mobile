@@ -667,7 +667,12 @@ export const DICT_DE = {
     "solar_trend_growing": "Tageslicht nimmt zu",
     "solar_trend_shrinking": "Tageslicht nimmt ab",
     "solar_trend_solstice_max": "Tageslicht-Maximum",
-    "solar_trend_solstice_min": "Tageslicht-Minimum"
+    "solar_trend_solstice_min": "Tageslicht-Minimum",
+    "settings_support_title": "Projekt & Unterstützung",
+    "settings_support_desc": "Der Quellcode ist auf GitHub verfügbar. Wenn Ihnen die App im Alltag hilft, können Sie die Weiterentwicklung unterstützen.",
+    "btn_github_repo": "GitHub-Repository",
+    "support_donate_label": "Projekt unterstützen",
+    "support_copied_toast": "Kopiert ✓"
   },
   "help": {
     "page_title": "Dynamisches Handbuch · Lunar Rhythm Navigator",
@@ -833,6 +838,19 @@ export const DICT_DE = {
     "days_selected_card_title": "Ausgewählter Lunartag",
     "days_today_card_title": "Aktueller Lunartag",
     "days_explain_card_title": "Warum die Verschiebung im Zyklus schwankt",
-    "days_selected_badge": "Im Diagramm"
+    "days_selected_badge": "Im Diagramm",
+    "phase_short_new_moon": "neumond",
+    "phase_short_waxing_crescent": "zunehmende sichel",
+    "phase_short_first_quarter": "erstes viertel",
+    "phase_short_waxing_gibbous": "zunehmend",
+    "phase_short_full_moon": "vollmond",
+    "phase_short_waning_gibbous": "abnehmend",
+    "phase_short_last_quarter": "letztes viertel",
+    "phase_short_waning_crescent": "abnehmende sichel",
+    "horizon_diff_prefix": "",
+    "days_legend_bar": "Lunartag",
+    "days_legend_rise": "Aufgang",
+    "days_selected_heading_tpl": "Ausgewählter {day}. Lunartag",
+    "days_today_heading_tpl": "Heute: {day}. Lunartag"
   }
 };

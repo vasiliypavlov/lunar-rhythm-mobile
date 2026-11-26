@@ -667,7 +667,12 @@ export const DICT_ES = {
     "solar_trend_growing": "La luz diurna aumenta",
     "solar_trend_shrinking": "La luz diurna disminuye",
     "solar_trend_solstice_max": "Máximo de luz diurna",
-    "solar_trend_solstice_min": "Mínimo de luz diurna"
+    "solar_trend_solstice_min": "Mínimo de luz diurna",
+    "settings_support_title": "Proyecto y apoyo",
+    "settings_support_desc": "El código fuente es abierto en GitHub. Si la app te ayuda a organizar tu ritmo diario, puedes apoyar su desarrollo.",
+    "btn_github_repo": "Repositorio en GitHub",
+    "support_donate_label": "Apoyar el proyecto",
+    "support_copied_toast": "Copiado ✓"
   },
   "help": {
     "page_title": "Guía Dinámica · Lunar Rhythm Navigator",
@@ -833,6 +838,19 @@ export const DICT_ES = {
     "days_selected_card_title": "Día lunar seleccionado",
     "days_today_card_title": "Día lunar actual",
     "days_explain_card_title": "Por qué cambia el desplazamiento",
-    "days_selected_badge": "En gráfico"
+    "days_selected_badge": "En gráfico",
+    "phase_short_new_moon": "luna nueva",
+    "phase_short_waxing_crescent": "creciente",
+    "phase_short_first_quarter": "cuarto creciente",
+    "phase_short_waxing_gibbous": "gibosa creciente",
+    "phase_short_full_moon": "luna llena",
+    "phase_short_waning_gibbous": "gibosa menguante",
+    "phase_short_last_quarter": "cuarto menguante",
+    "phase_short_waning_crescent": "menguante",
+    "horizon_diff_prefix": "",
+    "days_legend_bar": "día lunar",
+    "days_legend_rise": "salida",
+    "days_selected_heading_tpl": "Día lunar {day} seleccionado",
+    "days_today_heading_tpl": "Hoy: día lunar {day}"
   }
 };

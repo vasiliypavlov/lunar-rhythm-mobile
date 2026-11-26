@@ -1,6 +1,7 @@
 {
   "name": "Lunar Rhythm Navigator",
   "short_name": "Lunar Rhythm",
+  "version": "1.1.0",
   "description": "Autonomous lunar calendar, personal rhythm navigator, aspect graph, and lunar alarm with voice briefing.",
   "lang": "en",
   "start_url": "./index.html",

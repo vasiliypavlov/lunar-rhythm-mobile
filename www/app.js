@@ -335,35 +335,48 @@ function renderSunCanvas(canvas, sunSky, dayHours) {
 
   const cx = w / 2;
   const cy = h / 2;
-  const R = Math.min(w, h) * 0.43;
+  const minDim = Math.min(w, h);
+  const discR = minDim * 0.265;
+  const haloR = minDim * 0.495;
   const isSubdued = dayHours <= 0.02 || (sunSky && sunSky.altDeg < -6);
 
-  const halo = ctx.createRadialGradient(cx, cy, R * 0.85, cx, cy, R * 1.15);
-  halo.addColorStop(0, isSubdued ? 'rgba(232, 168, 56, 0.24)' : 'rgba(255, 210, 74, 0.34)');
-  halo.addColorStop(0.65, isSubdued ? 'rgba(201, 111, 40, 0.10)' : 'rgba(234, 179, 46, 0.12)');
-  halo.addColorStop(1, 'rgba(234, 179, 46, 0)');
+  // Broad centered solar corona tapering smoothly inside canvas bounds
+  const halo = ctx.createRadialGradient(cx, cy, discR * 0.88, cx, cy, haloR);
+  if (isSubdued) {
+    halo.addColorStop(0, 'rgba(255, 200, 95, 0.62)');
+    halo.addColorStop(0.28, 'rgba(240, 165, 58, 0.34)');
+    halo.addColorStop(0.65, 'rgba(214, 126, 38, 0.12)');
+    halo.addColorStop(1, 'rgba(214, 126, 38, 0)');
+  } else {
+    halo.addColorStop(0, 'rgba(255, 232, 128, 0.90)');
+    halo.addColorStop(0.22, 'rgba(255, 204, 68, 0.54)');
+    halo.addColorStop(0.55, 'rgba(245, 168, 36, 0.22)');
+    halo.addColorStop(0.82, 'rgba(234, 148, 28, 0.07)');
+    halo.addColorStop(1, 'rgba(234, 148, 28, 0)');
+  }
   ctx.fillStyle = halo;
   ctx.beginPath();
-  ctx.arc(cx, cy, R * 1.15, 0, Math.PI * 2);
+  ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
   ctx.fill();
 
-  const discGrad = ctx.createRadialGradient(cx - R * 0.14, cy - R * 0.16, R * 0.08, cx, cy, R);
+  // Centered flat luminous solar disc with soft limb bloom (no 3D sphere shading)
+  const discGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, discR * 1.06);
   if (isSubdued) {
-    discGrad.addColorStop(0, '#f5c76b');
-    discGrad.addColorStop(0.65, '#e8a838');
-    discGrad.addColorStop(0.95, '#d17b2a');
-    discGrad.addColorStop(1, '#c26922');
+    discGrad.addColorStop(0, '#fff3d6');
+    discGrad.addColorStop(0.76, '#ffe4a8');
+    discGrad.addColorStop(0.92, '#ffd078');
+    discGrad.addColorStop(1, 'rgba(255, 200, 95, 0)');
   } else {
-    discGrad.addColorStop(0, '#fff4bd');
-    discGrad.addColorStop(0.45, '#ffd859');
-    discGrad.addColorStop(0.86, '#eab32e');
-    discGrad.addColorStop(1, '#d9931c');
+    discGrad.addColorStop(0, '#fffef7');
+    discGrad.addColorStop(0.76, '#fffbe6');
+    discGrad.addColorStop(0.91, '#ffefaa');
+    discGrad.addColorStop(1, 'rgba(255, 224, 112, 0)');
   }
 
   ctx.save();
   ctx.fillStyle = discGrad;
   ctx.beginPath();
-  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.arc(cx, cy, discR * 1.06, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -5244,6 +5257,24 @@ function bindEvents() {
       window.location.href = `help.html?${params.toString()}`;
     });
   }
+
+  // Copy donation wallet address (ready when support block in Settings is enabled)
+  document.querySelectorAll('[data-copy-wallet]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const addr = btn.getAttribute('data-copy-wallet') || '';
+      if (!addr) return;
+      await copyTextToClipboard(addr);
+      const labels = getUILabels();
+      btn.textContent = labels.support_copied_toast || 'Скопировано ✓';
+      btn.classList.add('is-copied');
+      if (btn._copyResetTimer) clearTimeout(btn._copyResetTimer);
+      btn._copyResetTimer = setTimeout(() => {
+        btn.classList.remove('is-copied');
+        btn.textContent = getUILabels().btn_copy_backup || 'Копировать';
+        btn._copyResetTimer = null;
+      }, 1800);
+    });
+  });
 }
 
 /**

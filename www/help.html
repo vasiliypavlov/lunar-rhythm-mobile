@@ -224,6 +224,32 @@
     line-height: 1.25;
     white-space: nowrap;
   }
+  .phase-info-metrics.split-metrics {
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .phase-info-metrics.split-metrics .phase-metric-row:last-child {
+    align-items: flex-end;
+    text-align: right;
+  }
+  .phase-info-metrics.split-metrics .phase-metric-val {
+    white-space: normal;
+  }
+  .lunar-period-grid {
+    display: inline-grid;
+    grid-template-columns: auto auto auto;
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 2px;
+    font-weight: 700;
+    font-size: calc(13.5px * var(--help-font-scale));
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+  }
+  .lunar-period-arrow {
+    text-align: center;
+    opacity: 0.9;
+  }
 
   /* контролы */
   .ctrl-group { margin: 12px 0; }
@@ -274,13 +300,51 @@
     margin-bottom: 14px;
   }
   .tip b { color: var(--text); }
+  #horizonTip {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .horizon-tip-date {
+    font-weight: 700;
+    color: var(--text);
+  }
 
   .mini { font-size: calc(11.5px * var(--help-font-scale)); color: var(--dim); margin-top: 8px; line-height: 1.45; }
 
-  /* Личный ритм */
+  /* Личный ритм и Лунные сутки */
   .legend { display: flex; gap: 12px; font-size: calc(11px * var(--help-font-scale)); margin-top: 10px; flex-wrap: wrap; }
   .legend-item { display: flex; align-items: center; gap: 4px; color: var(--dim); }
   .legend-color { width: 10px; height: 10px; border-radius: 2px; }
+  .days-legend {
+    gap: 14px;
+    align-items: center;
+    font-size: calc(12px * var(--help-font-scale));
+    font-weight: 600;
+  }
+  .days-legend .legend-item { gap: 6px; color: var(--text); }
+  .legend-bar-swatch {
+    width: 6px;
+    height: 18px;
+    border-radius: 1.5px;
+    background: #7f9cf5;
+    flex: 0 0 auto;
+  }
+  .legend-dot-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #f5a47f;
+    flex: 0 0 auto;
+  }
+  .legend-diamond-swatch {
+    width: 10px;
+    height: 10px;
+    background: #f5b73e;
+    transform: rotate(45deg);
+    border-radius: 1px;
+    flex: 0 0 auto;
+  }
 
   /* Профили ритма и Наука */
   .badge-tag {
@@ -694,6 +758,12 @@
     <div class="card" style="padding-bottom:12px">
       <canvas id="lunarDayCanvas" width="500" height="390"></canvas>
 
+      <div class="legend days-legend">
+        <div class="legend-item"><span class="legend-bar-swatch" aria-hidden="true"></span><span data-i18n="days_legend_bar">лунные сутки</span></div>
+        <div class="legend-item"><span class="legend-dot-swatch" aria-hidden="true"></span><span data-i18n="days_legend_rise">восход</span></div>
+        <div class="legend-item"><span class="legend-diamond-swatch" aria-hidden="true"></span><span data-i18n="days_new_moon">новолуние</span></div>
+      </div>
+
       <div class="ctrl-group">
         <div class="ctrl-label"><span data-i18n="label_cycle_day">День цикла (от новолуния)</span><span id="dayVal">1</span></div>
         <input type="range" id="daySlider" min="1" max="30" step="1" value="1">
@@ -707,17 +777,11 @@
     <div class="card">
       <ul class="practice-steps" style="margin-top:0">
         <li class="practice-step" id="daysSelectedCard">
-          <div class="practice-step-head">
-            <span class="practice-step-title" data-i18n="days_selected_card_title">Выбранные лунные сутки</span>
-            <span class="step-pill gold" id="daysSelectedPill" data-i18n="days_selected_badge">На графике</span>
-          </div>
+          <span class="practice-step-title" id="daysSelectedTitle" data-i18n="days_selected_card_title" style="margin-bottom:6px">Выбранные лунные сутки</span>
           <div id="lunarDaySummary">—</div>
         </li>
         <li class="practice-step" id="daysTodayCard">
-          <div class="practice-step-head">
-            <span class="practice-step-title" data-i18n="days_today_card_title">Текущие лунные сутки</span>
-            <span class="step-pill" id="daysTodayPill" data-i18n="days_today">сегодня</span>
-          </div>
+          <span class="practice-step-title" id="daysTodayTitle" data-i18n="days_today_card_title" style="margin-bottom:6px">Текущие лунные сутки</span>
           <div id="lunarDayToday">—</div>
         </li>
         <li class="practice-step">

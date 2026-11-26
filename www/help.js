@@ -152,7 +152,11 @@ tabs.forEach(tabBtn => {
     activeTab = key;
 
     if (activeTab === 'horizon') { drawHorizon(); updateHorizonPanels(); }
-    if (activeTab === 'days') { drawLunarDays(+document.getElementById('daySlider').value); updateLunarDayPanels(+document.getElementById('daySlider').value); }
+    if (activeTab === 'days') {
+      const dVal = syncDaySliderBounds(lunarCycleIntervals());
+      drawLunarDays(dVal);
+      updateLunarDayPanels(dVal);
+    }
     if (activeTab === 'personal') drawPersonal();
   });
 });
@@ -281,8 +285,9 @@ function updateUI(E, isSlider) {
   const moonTrends = (activeDict && activeDict.moon_trends) || {};
   const approxAge = (normElong / 360) * SYNODIC_MONTH;
   const phaseTitle = phaseNames[def.key] || def.key;
+  const shortPhaseTitle = h[`phase_short_${def.key}`] || phaseTitle;
 
-  document.getElementById('phName').textContent = `${phaseTitle} · ~${approxAge.toFixed(1)} ${unit}`;
+  document.getElementById('phName').textContent = `~${approxAge.toFixed(1)} ${unit} · ${shortPhaseTitle}`;
   document.getElementById('phIllum').textContent = def.illum;
   document.getElementById('phSky').textContent = h[`phase_sky_${def.key}`] || '';
 
@@ -1452,24 +1457,35 @@ function updateHorizonPanels() {
   const tipEl = document.getElementById('horizonTip');
   if (tipEl) {
     const elong = elongAt(data.date);
-    const parts = [];
-    parts.push(
-      `${formatDateShort(data.date)}: ${sunW} — ${riseW} ${formatClockJD(data.sunRise)}, ` +
-      `${setW} ${formatClockJD(data.sunSet)}; ${moonW} (${h.horizon_elong_word || 'elongation'} ` +
-      `${Math.round(elong)}°) — ${riseW} ${formatHorizonMetricJD(data.moonRiseDisplay)}`
-    );
+    tipEl.textContent = '';
+
+    const line1 = document.createElement('div');
+    line1.className = 'horizon-tip-date';
+    line1.textContent = `${formatDateShort(data.date)}:`;
+    tipEl.appendChild(line1);
+
+    const line2 = document.createElement('div');
+    line2.textContent = `${sunW} — ${riseW} ${formatClockJD(data.sunRise)}, ${setW} ${formatClockJD(data.sunSet)};`;
+    tipEl.appendChild(line2);
+
+    const line3 = document.createElement('div');
+    const moonBase = `${moonW} (${h.horizon_elong_word || 'elongation'} ${Math.round(elong)}°) — ${riseW} ${formatHorizonMetricJD(data.moonRiseDisplay)}`;
     if (data.sunRise !== null && data.moonRise !== null) {
       const diff = Math.round((data.moonRise - data.sunRise) * 24 * 60);
-      parts.push(
-        `(${formatMinutesDelta(Math.abs(diff))} ` +
-        `${diff >= 0 ? (h.horizon_later_than || 'later than the Sun') : (h.horizon_earlier_than || 'earlier than the Sun')}).`
-      );
+      const diffPrefix = h.horizon_diff_prefix ? `${h.horizon_diff_prefix} ` : '';
+      const relWord = diff >= 0 ? (h.horizon_later_than || 'later than the Sun') : (h.horizon_earlier_than || 'earlier than the Sun');
+      line3.textContent = `${moonBase} (${diffPrefix}${formatMinutesDelta(Math.abs(diff))} ${relWord}).`;
+    } else {
+      line3.textContent = `${moonBase}.`;
     }
+    tipEl.appendChild(line3);
+
     const tomorrow = horizonDriftSeries(horizonDate, 2)[1];
     if (tomorrow && tomorrow.rise !== null) {
-      parts.push(`${h.horizon_next_rise || 'Next moonrise'} ${formatDateShort(tomorrow.date)} ${formatClockJD(tomorrow.rise)}.`);
+      const line4 = document.createElement('div');
+      line4.textContent = `${h.horizon_next_rise || 'Next moonrise:'} ${formatDateShort(tomorrow.date)} ${formatClockJD(tomorrow.rise)}.`;
+      tipEl.appendChild(line4);
     }
-    tipEl.textContent = parts.join(' ');
   }
 
   drawHorizonDrift();
@@ -1480,17 +1496,78 @@ const daySlider = document.getElementById('daySlider');
 const dayVal = document.getElementById('dayVal');
 const daysTodayBtn = document.getElementById('daysTodayBtn');
 
+function resolveLunationSelection(intervals, rawDay) {
+  const maxDay = intervals.length ? intervals[intervals.length - 1].day : 1;
+  const parsed = Math.round(Number(rawDay) || 1);
+  const clampedDay = Math.max(1, Math.min(maxDay, parsed));
+  let selIdx = intervals.findIndex((iv) => iv.day === clampedDay);
+  if (selIdx < 0) {
+    selIdx = clampedDay >= maxDay ? Math.max(0, intervals.length - 1) : 0;
+  }
+  return { clampedDay, selIdx, maxDay };
+}
+
+function syncDaySliderBounds(intervals, preferredDay) {
+  const maxDay = intervals.length ? intervals[intervals.length - 1].day : 1;
+  if (daySlider) {
+    daySlider.min = '1';
+    daySlider.max = String(maxDay);
+    const rawVal = preferredDay !== undefined ? preferredDay : +daySlider.value;
+    const clamped = Math.max(1, Math.min(maxDay, Math.round(Number(rawVal) || 1)));
+    daySlider.value = String(clamped);
+    if (dayVal) dayVal.textContent = String(clamped);
+    return clamped;
+  }
+  return Math.max(1, Math.min(maxDay, Math.round(Number(preferredDay) || 1)));
+}
+
+function formatLunarDayHeadingArg(dayNum) {
+  const lang = String((activeDict && activeDict.meta && activeDict.meta.lang) || ctx.lang || '').toLowerCase();
+  if (lang.startsWith('ru')) {
+    const n = Number(dayNum);
+    return n === 3 || n === 23 ? `${n}-и` : `${n}-е`;
+  }
+  return String(dayNum);
+}
+
+function buildLunarPeriodGrid(startDate, endDate, colorVar) {
+  const grid = document.createElement('div');
+  grid.className = 'lunar-period-grid';
+  grid.style.color = colorVar;
+
+  const sDateEl = document.createElement('span');
+  sDateEl.textContent = formatDateShort(startDate);
+  const arrowEl = document.createElement('span');
+  arrowEl.className = 'lunar-period-arrow';
+  arrowEl.textContent = '→';
+  const eDateEl = document.createElement('span');
+  eDateEl.textContent = formatDateShort(endDate);
+
+  const sTimeEl = document.createElement('span');
+  sTimeEl.textContent = formatClock(startDate);
+  const spacerEl = document.createElement('span');
+  spacerEl.setAttribute('aria-hidden', 'true');
+  const eTimeEl = document.createElement('span');
+  eTimeEl.textContent = formatClock(endDate);
+
+  grid.appendChild(sDateEl);
+  grid.appendChild(arrowEl);
+  grid.appendChild(eDateEl);
+  grid.appendChild(sTimeEl);
+  grid.appendChild(spacerEl);
+  grid.appendChild(eTimeEl);
+  return grid;
+}
+
 daySlider.addEventListener('input', (e) => {
-  dayVal.textContent = e.target.value;
-  drawLunarDays(+e.target.value);
-  updateLunarDayPanels(+e.target.value);
+  const dVal = syncDaySliderBounds(lunarCycleIntervals(), +e.target.value);
+  drawLunarDays(dVal);
+  updateLunarDayPanels(dVal);
 });
 
 if (daysTodayBtn) {
   daysTodayBtn.addEventListener('click', () => {
-    const cur = currentLunarDayNumber();
-    daySlider.value = String(cur);
-    dayVal.textContent = String(cur);
+    const cur = syncDaySliderBounds(lunarCycleIntervals(), currentLunarDayNumber());
     drawLunarDays(cur);
     updateLunarDayPanels(cur);
   });
@@ -1515,7 +1592,8 @@ function currentLunarDayNumber() {
 
 /**
  * Лунные сутки в реальных границах: горизонтальная ось — календарное время,
- * строки — лунные сутки. Полоска идёт от восхода до восхода, точка — восход.
+ * строки — лунные сутки с временем начала слева. Полоска идёт от восхода до восхода,
+ * номер суток и сдвиг показаны на активной полосе.
  */
 function drawLunarDays(day) {
   const h = hDict();
@@ -1527,8 +1605,7 @@ function drawLunarDays(day) {
 
   const lun = lunarCycle();
   const intervals = lun.intervals;
-  let selIdx = intervals.findIndex((iv) => iv.day === day);
-  if (selIdx < 0) selIdx = 0;
+  const { selIdx } = resolveLunationSelection(intervals, day);
   const selected = intervals[selIdx];
 
   const rowCount = 5;
@@ -1539,10 +1616,10 @@ function drawLunarDays(day) {
   const winEnd = selected.endJD + 0.6;
   const span = winEnd - winStart;
 
-  const padL = 48;
+  const padL = 58;
   const padR = 14;
   const axisH = 68;
-  const top = 34;
+  const top = 12;
   const rowH = (H - top - axisH) / rowCount;
   const xOf = (jd) => padL + ((jd - winStart) / span) * (W - padL - padR);
 
@@ -1578,8 +1655,9 @@ function drawLunarDays(day) {
   const jdNow = toJulianDay(new Date());
   const todayIv = intervals.find((x) => jdNow >= x.startJD && jdNow < x.endJD);
 
-  rows.forEach((iv, i) => {
-    const y = top + i * rowH;
+  rows.forEach((iv) => {
+    const rowIdx = rows.indexOf(iv);
+    const y = top + rowIdx * rowH;
     const barH = rowH - 14;
     const barMidY = y + 5 + barH / 2;
     const x0 = xOf(iv.startJD);
@@ -1604,11 +1682,12 @@ function drawLunarDays(day) {
       : (standstill ? 'rgba(127, 209, 174, 0.35)' : 'rgba(127, 156, 245, 0.36)');
     g.fillRect(x0, y + 5, Math.max(4, x1 - x0), barH);
 
-    // Номер лунных суток слева от полосы
+    // Время начала лунных суток слева (ось Y)
+    const startClock = formatClock(fromJulianDay(iv.startJD));
     g.fillStyle = isSel ? '#f0f2f8' : '#9aa0b5';
-    g.font = 'bold 16px sans-serif';
+    g.font = isSel ? 'bold 14.5px sans-serif' : '13.5px sans-serif';
     g.textAlign = 'right';
-    g.fillText(String(iv.day), padL - 10, barMidY + 5);
+    g.fillText(startClock, padL - 10, barMidY + 5);
 
     // Граница суток: восход (точка) или новолуние (ромб)
     const markX = isNewMoonEnd ? x1 : x0;
@@ -1621,7 +1700,12 @@ function drawLunarDays(day) {
       g.lineTo(markX - 6.5, barMidY);
       g.closePath();
       g.fill();
-      const nmAlign = isNewMoonEnd && markX > W - 120 ? 'right' : 'left';
+      let nmAlign = 'left';
+      if (isNewMoonStart && markX - padL >= 88) {
+        nmAlign = 'right';
+      } else if (isNewMoonEnd && W - padR - markX < 95) {
+        nmAlign = 'right';
+      }
       const nmX = nmAlign === 'right' ? markX - 10 : markX + 10;
       drawOutlinedText(g, h.days_new_moon || 'new moon', nmX, barMidY + 5, '#f5b73e', 'bold 13.5px sans-serif', nmAlign, 120);
     } else {
@@ -1631,14 +1715,65 @@ function drawLunarDays(day) {
       g.fill();
     }
 
-    // Длительность и сдвиг внутри видимой части полосы (без перекрытия)
+    // Длительность и (для активной полосы) номер лунных суток со сдвигом без перекрытий
     const durText = formatDurationMs(durMin * MS_PER_MIN);
-    if (drawW >= 95 && x1 >= padL + 75) {
-      drawOutlinedText(g, durText, Math.min(x1, W - padR) - 8, barMidY + 5, isSel ? '#ffffff' : '#c9cde0', 'bold 14px sans-serif', 'right', 110);
-    }
+    g.save();
+    g.font = 'bold 14px sans-serif';
+    const durW = g.measureText(durText).width;
+    g.restore();
 
-    if (stepMin !== null && x0 >= padL - 2 && drawW >= 150) {
-      drawOutlinedText(g, `${stepMin > 0 ? '+' : ''}${stepMin}`, x0 + 10, barMidY + 5, standstill ? '#7fd1ae' : '#f5a47f', 'bold 14px sans-serif', 'left', 48);
+    if (isSel) {
+      const hasStep = stepMin !== null;
+      const dayPart = hasStep ? `${iv.day}:` : String(iv.day);
+      const stepPart = hasStep ? ` ${stepMin > 0 ? '+' : '−'}${Math.abs(stepMin)}` : '';
+
+      g.save();
+      g.font = 'bold 14px sans-serif';
+      const dayPartW = g.measureText(dayPart).width;
+      const stepPartW = stepPart ? g.measureText(stepPart).width : 0;
+      g.restore();
+
+      const leftStartX = drawX0 + 10;
+      const rightEdgeX = Math.min(x1, W - padR) - 8;
+      const availW = rightEdgeX - leftStartX;
+      const fullLeftW = dayPartW + stepPartW;
+
+      if (availW >= fullLeftW + durW + 14) {
+        g.save();
+        g.font = 'bold 14px sans-serif';
+        g.textAlign = 'left';
+        g.fillStyle = '#ffffff';
+        g.fillText(dayPart, leftStartX, barMidY + 5);
+        if (stepPart) {
+          g.fillStyle = standstill ? '#7fd1ae' : '#ffd666';
+          g.fillText(stepPart, leftStartX + dayPartW, barMidY + 5);
+        }
+        g.restore();
+        drawOutlinedText(g, durText, rightEdgeX, barMidY + 5, '#ffffff', 'bold 14px sans-serif', 'right', 110);
+      } else if (availW >= dayPartW + durW + 12) {
+        g.save();
+        g.font = 'bold 14px sans-serif';
+        g.textAlign = 'left';
+        g.fillStyle = '#ffffff';
+        g.fillText(dayPart, leftStartX, barMidY + 5);
+        g.restore();
+        drawOutlinedText(g, durText, rightEdgeX, barMidY + 5, '#ffffff', 'bold 14px sans-serif', 'right', 110);
+      } else if (availW >= fullLeftW) {
+        g.save();
+        g.font = 'bold 14px sans-serif';
+        g.textAlign = 'left';
+        g.fillStyle = '#ffffff';
+        g.fillText(dayPart, leftStartX, barMidY + 5);
+        if (stepPart) {
+          g.fillStyle = standstill ? '#7fd1ae' : '#ffd666';
+          g.fillText(stepPart, leftStartX + dayPartW, barMidY + 5);
+        }
+        g.restore();
+      } else if (drawW >= durW + 12) {
+        drawOutlinedText(g, durText, rightEdgeX, barMidY + 5, '#ffffff', 'bold 14px sans-serif', 'right', 110);
+      }
+    } else if (drawW >= Math.max(95, durW + 18) && x1 >= padL + 75) {
+      drawOutlinedText(g, durText, Math.min(x1, W - padR) - 8, barMidY + 5, '#c9cde0', 'bold 14px sans-serif', 'right', 110);
     }
   });
 
@@ -1651,7 +1786,7 @@ function drawLunarDays(day) {
       g.strokeStyle = 'rgba(255,255,255,0.14)';
       g.lineWidth = 1;
       g.beginPath();
-      g.moveTo(x, top - 6);
+      g.moveTo(x, top);
       g.lineTo(x, axisTop + 14);
       g.stroke();
     }
@@ -1694,7 +1829,7 @@ function drawLunarDays(day) {
     g.lineWidth = 2;
     g.setLineDash([4, 3]);
     g.beginPath();
-    g.moveTo(x, top - 6);
+    g.moveTo(x, top);
     g.lineTo(x, axisTop + 14);
     g.stroke();
     g.setLineDash([]);
@@ -1703,44 +1838,35 @@ function drawLunarDays(day) {
     const safeTodayX = Math.max(padL + 36, Math.min(W - 36, x));
     drawOutlinedText(g, h.days_today || 'today', safeTodayX, axisTop + 11, '#7fd1ae', 'bold 13.5px sans-serif', 'center', 90);
   }
-
-  // ── Условные обозначения ──
-  g.fillStyle = '#8b91a8';
-  g.font = '13px sans-serif';
-  g.textAlign = 'left';
-  g.fillText(h.days_legend || 'bar = lunar day, dot = moonrise', padL, 21, W - padL - 12);
 }
 
 function updateLunarDayPanels(day) {
   const h = hDict();
-  const intervals = lunarCycleIntervals();
-  let selIdx = intervals.findIndex((iv) => iv.day === day);
-  if (selIdx < 0) selIdx = 0;
+  const lun = lunarCycle();
+  const intervals = lun.intervals;
+  const { selIdx } = resolveLunationSelection(intervals, day);
   const iv = intervals[selIdx];
   const durMin = Math.round((iv.endJD - iv.startJD) * 24 * 60);
   const prev = selIdx > 0 ? intervals[selIdx - 1] : null;
-  const stepMin = prev ? durMin - 1440 : null;
+  const isNewMoonEnd = Math.abs(iv.endJD - lun.nmNext) < 1e-6;
+  const stepMin = prev && !isNewMoonEnd ? durMin - 1440 : null;
   const sD = fromJulianDay(iv.startJD);
   const eD = fromJulianDay(iv.endJD);
 
-  const selectedPillEl = document.getElementById('daysSelectedPill');
-  if (selectedPillEl) {
-    selectedPillEl.textContent = `${h.days_summary_label || 'Lunar day'} ${iv.day}`;
+  const selectedTitleEl = document.getElementById('daysSelectedTitle');
+  if (selectedTitleEl) {
+    const tpl = h.days_selected_heading_tpl || 'Selected lunar day {day}';
+    selectedTitleEl.textContent = tpl.replace('{day}', formatLunarDayHeadingArg(iv.day));
   }
 
   const summaryEl = document.getElementById('lunarDaySummary');
   if (summaryEl) {
     summaryEl.textContent = '';
-    const periodLine = document.createElement('div');
-    periodLine.style.color = 'var(--text)';
-    periodLine.style.fontWeight = '600';
-    periodLine.style.marginBottom = '8px';
-    periodLine.textContent =
-      `${h.days_from_label || 'from'} ${formatDateShort(sD)} ${formatClock(sD)} ` +
-      `${h.days_to_label || 'to'} ${formatDateShort(eD)} ${formatClock(eD)}`;
+    const periodGrid = buildLunarPeriodGrid(sD, eD, 'var(--blue)');
 
     const metrics = document.createElement('div');
     metrics.className = 'phase-info-metrics';
+    metrics.style.marginTop = '8px';
     metrics.appendChild(
       createMetricCell(
         h.days_duration_label || 'Duration',
@@ -1755,7 +1881,7 @@ function updateLunarDayPanels(day) {
         stepMin !== null && Math.abs(stepMin) < 15 ? 'var(--teal)' : 'var(--orange)'
       )
     );
-    summaryEl.appendChild(periodLine);
+    summaryEl.appendChild(periodGrid);
     summaryEl.appendChild(metrics);
   }
 
@@ -1766,34 +1892,24 @@ function updateLunarDayPanels(day) {
   const isSel = cur.day === iv.day;
 
   const todayCardEl = document.getElementById('daysTodayCard');
-  const todayPillEl = document.getElementById('daysTodayPill');
   if (todayCardEl) todayCardEl.classList.toggle('is-highlighted', isSel);
-  if (todayPillEl) todayPillEl.classList.toggle('gold', isSel);
+
+  const todayTitleEl = document.getElementById('daysTodayTitle');
+  if (todayTitleEl) {
+    const tpl = h.days_today_heading_tpl || 'Today: lunar day {day}';
+    todayTitleEl.textContent = tpl.replace('{day}', formatLunarDayHeadingArg(cur.day));
+  }
 
   const todayEl = document.getElementById('lunarDayToday');
   if (todayEl) {
     const cS = fromJulianDay(cur.startJD);
     const cE = fromJulianDay(cur.endJD);
     todayEl.textContent = '';
-    const line1 = document.createElement('div');
-    line1.style.color = 'var(--text)';
-    line1.style.fontWeight = '600';
-    line1.textContent =
-      `${h.days_summary_label || 'Lunar day'} ${cur.day}: ` +
-      `${formatDateShort(cS)} ${formatClock(cS)} → ${formatDateShort(cE)} ${formatClock(cE)}`;
-    const line2 = document.createElement('div');
-    line2.className = 'step-subnote';
-    line2.style.marginTop = '4px';
-    line2.textContent = isSel
-      ? (h.days_today_is_selected || 'This is the day shown above.')
-      : (h.days_today_other || 'Move the slider to it.');
-    todayEl.appendChild(line1);
-    todayEl.appendChild(line2);
+    todayEl.appendChild(buildLunarPeriodGrid(cS, cE, 'var(--gold)'));
   }
 
   const explainEl = document.getElementById('lunarDayExplain');
   if (explainEl) {
-    const lun = lunarCycle();
     let minS = null;
     let maxS = null;
     let sum = 0;
@@ -1811,7 +1927,7 @@ function updateLunarDayPanels(day) {
     explainEl.textContent = '';
 
     const metrics = document.createElement('div');
-    metrics.className = 'phase-info-metrics';
+    metrics.className = 'phase-info-metrics split-metrics';
     metrics.style.borderTop = 'none';
     metrics.style.paddingTop = '0';
     metrics.style.marginBottom = '8px';
@@ -2155,7 +2271,8 @@ function applyDictionaryLocalization() {
   }
 
   updateHorizonPanels();
-  updateLunarDayPanels(+daySlider.value || currentLunarDayNumber());
+  const syncedDay = syncDaySliderBounds(lunarCycleIntervals(), +daySlider.value || currentLunarDayNumber());
+  updateLunarDayPanels(syncedDay);
 
   const personalNoteEl = document.getElementById('personalContextNote');
   const birthALabelEl = document.getElementById('birthALabel');
@@ -2227,8 +2344,9 @@ async function loadCustomDictOverride() {
     applyDictionaryLocalization();
     updateUI(currentElong, false);
     drawPersonal();
-    drawLunarDays(+daySlider.value || 1);
-    updateLunarDayPanels(+daySlider.value || currentLunarDayNumber());
+    const syncedDay = syncDaySliderBounds(lunarCycleIntervals(), +daySlider.value || currentLunarDayNumber());
+    drawLunarDays(syncedDay);
+    updateLunarDayPanels(syncedDay);
   }
 }
 
@@ -2237,10 +2355,13 @@ async function loadCustomDictOverride() {
   const now = new Date();
   const nowInfo = getMoonPhaseInfo(now);
   const todaySummary = getCalendarDayLunarSummary(now, now);
-  const currentLunarDay = Math.max(
-    1,
-    Math.min(30, (todaySummary && todaySummary.activeLunarDay) || Math.round(nowInfo.moonAge) || 1)
-  );
+  const intervals = lunarCycleIntervals();
+  const initialRawDay =
+    (todaySummary && todaySummary.activeLunarDay) ||
+    currentLunarDayNumber() ||
+    Math.round(nowInfo.moonAge) ||
+    1;
+  const currentLunarDay = syncDaySliderBounds(intervals, initialRawDay);
   const antiphaseMoonAge = (ctx.birthMoonAge + SYNODIC_MONTH / 2) % SYNODIC_MONTH;
 
   if (ctx.birthISO) {
@@ -2259,9 +2380,6 @@ async function loadCustomDictOverride() {
     horizonDateInputEl.value =
       `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   }
-
-  daySlider.value = String(currentLunarDay);
-  dayVal.textContent = String(currentLunarDay);
 
   applyDictionaryLocalization();
   setHorizonDate(horizonDate);
