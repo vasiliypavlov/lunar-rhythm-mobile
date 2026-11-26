@@ -1795,17 +1795,18 @@ function drawLunarDays(day) {
       const visW = visRight - visLeft;
       const fullyInLunation = jd0 >= lun.nmPrev - 1e-6 && jd1 <= lun.nmNext + 1e-6;
       if (fullyInLunation && visW >= 40) {
-        const colCenter = Math.max(padL + 42, Math.min(W - 42, (visLeft + visRight) / 2));
+        const colCenter = Math.max(padL + 60, Math.min(W - 58, (visLeft + visRight) / 2));
+        const dayLbl = formatDateShort(d);
         if (riseCount[i] === 0) {
           g.fillStyle = '#e57c73';
           g.font = 'bold 13px sans-serif';
           g.textAlign = 'center';
-          g.fillText(h.days_no_rise || 'no rise', colCenter, axisTop + 54, 110);
+          g.fillText(`${h.days_no_rise || 'no rise'} ${dayLbl}`, colCenter, axisTop + 54, 152);
         } else if (riseCount[i] >= 2) {
           g.fillStyle = '#7fd1ae';
           g.font = 'bold 13px sans-serif';
           g.textAlign = 'center';
-          g.fillText(h.days_two_rises || '2 rises', colCenter, axisTop + 54, 110);
+          g.fillText(`${h.days_two_rises || '2 rises'} ${dayLbl}`, colCenter, axisTop + 54, 152);
         }
       }
     }
