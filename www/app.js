@@ -177,6 +177,19 @@ function shadeHexColor(hex, factor) {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+function blendHexColor(hexA, hexB, t) {
+  const cleanA = String(hexA || '').replace('#', '').trim();
+  const cleanB = String(hexB || '').replace('#', '').trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(cleanA) || !/^[0-9a-fA-F]{6}$/.test(cleanB)) return hexA || '#3f3f3f';
+  const k = Math.max(0, Math.min(1, Number(t) || 0));
+  const lerpCh = (i) => {
+    const a = parseInt(cleanA.slice(i, i + 2), 16);
+    const b = parseInt(cleanB.slice(i, i + 2), 16);
+    return Math.round(a + (b - a) * k).toString(16).padStart(2, '0');
+  };
+  return `#${lerpCh(0)}${lerpCh(2)}${lerpCh(4)}`;
+}
+
 let appState = structuredClone(DEFAULT_PERSISTED_STATE);
 let selectedDate = startOfDay(new Date());
 let activeTab = 'today';
@@ -2722,17 +2735,25 @@ function renderHeroAndToday(dict) {
     : null;
   const isSolarMode = appState.heroMode === 'solar';
 
-  // Hero container background + time-of-day radial vignette (edges darken toward night)
+  // Hero container background + time-of-day radial vignette (daylight glow, warm dusk rim, deep midnight edge)
   const heroCard = document.getElementById('hero-card');
   const bgHex = personal ? personal.headerColor : PHASE_COLORS.neutral;
   const sunSkyForBg = getBodySkyPosition(toJulianDay(bgMoment), 'sun');
-  const altT = Math.max(0, Math.min(1, (12 - sunSkyForBg.altDeg) / 27));
+  const altDeg = sunSkyForBg.altDeg;
+  const altT = Math.max(0, Math.min(1, (14 - altDeg) / 29));
   const nightFactor = altT * altT * (3 - 2 * altT);
-  const centerHex = shadeHexColor(bgHex, 0.06 * (1 - nightFactor));
-  const midHex = shadeHexColor(bgHex, -0.06 * nightFactor);
-  const edgeHex = shadeHexColor(bgHex, -(0.08 + 0.54 * nightFactor));
+  const twilightFactor = Math.max(0, 1 - Math.abs(altDeg - 1) / 11);
+  const centerHex = shadeHexColor(bgHex, 0.14 - 0.08 * nightFactor);
+  const midHex = shadeHexColor(bgHex, -0.02 - 0.06 * nightFactor);
+  let edgeHex = shadeHexColor(bgHex, -(0.22 + 0.44 * nightFactor));
+  if (twilightFactor > 0.01) {
+    edgeHex = blendHexColor(edgeHex, '#3a1f32', 0.22 * twilightFactor);
+  }
+  if (nightFactor > 0.01) {
+    edgeHex = blendHexColor(edgeHex, '#0c1224', 0.28 * nightFactor);
+  }
   heroCard.style.backgroundColor = bgHex;
-  heroCard.style.backgroundImage = `radial-gradient(ellipse 85% 95% at 50% 45%, ${centerHex} 0%, ${midHex} 48%, ${edgeHex} 100%)`;
+  heroCard.style.backgroundImage = `radial-gradient(ellipse 88% 98% at 42% 46%, ${centerHex} 0%, ${midHex} 50%, ${edgeHex} 100%)`;
   heroCard.classList.toggle('is-solar-mode', isSolarMode);
   heroCard.classList.toggle('has-active-alarm', Boolean(appState.activeAlarm));
   document.documentElement.style.setProperty('--hero-bg', bgHex);

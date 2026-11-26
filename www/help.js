@@ -1590,6 +1590,14 @@ function currentLunarDayNumber() {
   return cur.day;
 }
 
+function getLunarStepColors(stepMin) {
+  if (stepMin === null) return { canvas: '#ffffff', css: 'var(--text)' };
+  const abs = Math.abs(stepMin);
+  if (abs < 25) return { canvas: '#7ef2b6', css: 'var(--teal)' };
+  if (abs < 65) return { canvas: '#ffd866', css: 'var(--gold)' };
+  return { canvas: '#ef7d64', css: 'var(--brick)' };
+}
+
 /**
  * Лунные сутки в реальных границах: горизонтальная ось — календарное время,
  * строки — лунные сутки с временем начала слева. Полоска идёт от восхода до восхода,
@@ -1668,7 +1676,7 @@ function drawLunarDays(day) {
     const isNewMoonStart = Math.abs(iv.startJD - lun.nmPrev) < 1e-6;
     const isNewMoonEnd = Math.abs(iv.endJD - lun.nmNext) < 1e-6;
     const stepMin = iv.day > 1 && !isNewMoonEnd ? durMin - 1440 : null;
-    const standstill = stepMin !== null && Math.abs(stepMin) < 15;
+    const stepColor = getLunarStepColors(stepMin);
 
     g.fillStyle = isSel ? 'rgba(42, 49, 82, 0.55)' : 'rgba(20, 24, 40, 0.35)';
     g.fillRect(0, y, W, rowH);
@@ -1677,9 +1685,7 @@ function drawLunarDays(day) {
     const drawX1 = Math.min(W - padR, x1);
     const drawW = Math.max(4, drawX1 - drawX0);
 
-    g.fillStyle = isSel
-      ? (standstill ? 'rgba(127, 209, 174, 0.9)' : 'rgba(127, 156, 245, 0.9)')
-      : (standstill ? 'rgba(127, 209, 174, 0.35)' : 'rgba(127, 156, 245, 0.36)');
+    g.fillStyle = isSel ? 'rgba(127, 156, 245, 0.9)' : 'rgba(127, 156, 245, 0.36)';
     g.fillRect(x0, y + 5, Math.max(4, x1 - x0), barH);
 
     // Время начала лунных суток слева (ось Y)
@@ -1739,36 +1745,19 @@ function drawLunarDays(day) {
       const fullLeftW = dayPartW + stepPartW;
 
       if (availW >= fullLeftW + durW + 14) {
-        g.save();
-        g.font = 'bold 14px sans-serif';
-        g.textAlign = 'left';
-        g.fillStyle = '#ffffff';
-        g.fillText(dayPart, leftStartX, barMidY + 5);
+        drawOutlinedText(g, dayPart, leftStartX, barMidY + 5, '#ffffff', 'bold 14px sans-serif', 'left', dayPartW + 8);
         if (stepPart) {
-          g.fillStyle = standstill ? '#7fd1ae' : '#ffd666';
-          g.fillText(stepPart, leftStartX + dayPartW, barMidY + 5);
+          drawOutlinedText(g, stepPart, leftStartX + dayPartW, barMidY + 5, stepColor.canvas, 'bold 14px sans-serif', 'left', stepPartW + 8);
         }
-        g.restore();
         drawOutlinedText(g, durText, rightEdgeX, barMidY + 5, '#ffffff', 'bold 14px sans-serif', 'right', 110);
       } else if (availW >= dayPartW + durW + 12) {
-        g.save();
-        g.font = 'bold 14px sans-serif';
-        g.textAlign = 'left';
-        g.fillStyle = '#ffffff';
-        g.fillText(dayPart, leftStartX, barMidY + 5);
-        g.restore();
+        drawOutlinedText(g, dayPart, leftStartX, barMidY + 5, '#ffffff', 'bold 14px sans-serif', 'left', dayPartW + 8);
         drawOutlinedText(g, durText, rightEdgeX, barMidY + 5, '#ffffff', 'bold 14px sans-serif', 'right', 110);
       } else if (availW >= fullLeftW) {
-        g.save();
-        g.font = 'bold 14px sans-serif';
-        g.textAlign = 'left';
-        g.fillStyle = '#ffffff';
-        g.fillText(dayPart, leftStartX, barMidY + 5);
+        drawOutlinedText(g, dayPart, leftStartX, barMidY + 5, '#ffffff', 'bold 14px sans-serif', 'left', dayPartW + 8);
         if (stepPart) {
-          g.fillStyle = standstill ? '#7fd1ae' : '#ffd666';
-          g.fillText(stepPart, leftStartX + dayPartW, barMidY + 5);
+          drawOutlinedText(g, stepPart, leftStartX + dayPartW, barMidY + 5, stepColor.canvas, 'bold 14px sans-serif', 'left', stepPartW + 8);
         }
-        g.restore();
       } else if (drawW >= durW + 12) {
         drawOutlinedText(g, durText, rightEdgeX, barMidY + 5, '#ffffff', 'bold 14px sans-serif', 'right', 110);
       }
@@ -1878,7 +1867,7 @@ function updateLunarDayPanels(day) {
       createMetricCell(
         h.days_step_label || 'Shift per day',
         stepMin !== null ? formatSignedMinutes(stepMin) : '—',
-        stepMin !== null && Math.abs(stepMin) < 15 ? 'var(--teal)' : 'var(--orange)'
+        stepMin !== null ? getLunarStepColors(stepMin).css : 'var(--dim)'
       )
     );
     summaryEl.appendChild(periodGrid);
