@@ -13,7 +13,8 @@
  *        - VIBRATE / WAKE_LOCK    — вибрация и работа в Doze.
  *
  *   2. Кладёт иконку уведомления (ic_stat_lunar) в res/drawable.
- *   3. Перезаписывает иконку приложения (adaptive icon + легаси-PNG).
+ *   3. Копирует набор иконок под все плотности (mdpi..xxxhdpi) для legacy и Android 8+ adaptive.
+ *   4. Синхронизирует versionName и versionCode в android/app/build.gradle из manifest/package.json.
  *
  * Скрипт идемпотентен: повторный запуск ничего не ломает.
  *
@@ -27,7 +28,6 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
-
 const ANDROID_DIR = path.join(ROOT, 'android');
 const MANIFEST_PATH = path.join(
   ANDROID_DIR,
@@ -46,39 +46,19 @@ const REQUIRED_PERMISSIONS = [
 ];
 
 const WWW_ICONS = path.join(ROOT, 'www/icons');
+const ANDROID_DENSITY_ICONS = path.join(WWW_ICONS, 'android');
 const NOTIFICATION_ICON = 'ic_stat_lunar';
-
-/**
- * Адаптивная иконка приложения: векторная «полулуна» + тёмный фон.
- * Формируется как обычный Android VectorDrawable — внешние зависимости не нужны.
- * Полулуна центрирована в безопасной зоне 108dp (внутренние 72dp).
- */
-const ADAPTIVE_FOREGROUND_XML = `<?xml version="1.0" encoding="utf-8"?>
-<!-- Полулуна: внешняя дуга + внутренняя дуга, образующие серп -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="#EAB32E"
-        android:pathData="M69,24 A30,30 0 1,0 69,84 A38,38 0 0,1 69,24 Z" />
-    <path
-        android:fillColor="#F6C860"
-        android:pathData="M69,33 A21,21 0 1,0 69,75 A27,27 0 0,1 69,33 Z" />
-</vector>
-`;
 
 const ADAPTIVE_ICON_XML = `<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>
 `;
 
 const BACKGROUND_COLOR_XML = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0F1115</color>
+    <color name="ic_launcher_background">#0A0E1C</color>
 </resources>
 `;
 
@@ -89,6 +69,50 @@ function log(message) {
 function fail(message) {
   process.stderr.write(`[prepare-android] ERROR: ${message}\n`);
   process.exitCode = 1;
+}
+
+/**
+ * Определяет версию приложения из www/manifest.webmanifest или package.json.
+ */
+function resolveAppVersion() {
+  const candidates = [
+    path.join(ROOT, 'www/manifest.webmanifest'),
+    path.join(ROOT, 'package.json')
+  ];
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      const ver = String(parsed?.version || '').trim();
+      if (/^\d+\.\d+\.\d+/.test(ver)) {
+        const [maj, min, pat] = ver.split('.').map((n) => parseInt(n, 10) || 0);
+        return {
+          versionName: ver,
+          versionCode: Math.max(2, maj * 10000 + min * 100 + pat)
+        };
+      }
+    } catch {
+      // Ignore malformed candidate and try next
+    }
+  }
+  return { versionName: '1.1.0', versionCode: 10100 };
+}
+
+/**
+ * Обновляет versionCode и versionName в android/app/build.gradle.
+ */
+function patchAppVersion() {
+  const gradlePath = path.join(ANDROID_DIR, 'app/build.gradle');
+  if (!fs.existsSync(gradlePath)) {
+    log('Предупреждение: android/app/build.gradle не найден — пропуск обновления версии.');
+    return;
+  }
+  const { versionName, versionCode } = resolveAppVersion();
+  let gradle = fs.readFileSync(gradlePath, 'utf8');
+  gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${versionCode}`);
+  gradle = gradle.replace(/versionName\s+"[^"]*"/, `versionName "${versionName}"`);
+  fs.writeFileSync(gradlePath, gradle, 'utf8');
+  log(`Версия APK обновлена: versionName "${versionName}", versionCode ${versionCode}.`);
 }
 
 /**
@@ -105,14 +129,12 @@ function patchManifest() {
 
   let manifest = fs.readFileSync(MANIFEST_PATH, 'utf8');
   const added = [];
-
   for (const entry of REQUIRED_PERMISSIONS) {
     const permission = typeof entry === 'string' ? entry : entry.name;
     const maxSdk =
       typeof entry === 'object' && entry.maxSdkVersion
         ? ` android:maxSdkVersion="${entry.maxSdkVersion}"`
         : '';
-
     if (manifest.includes(`android:name="${permission}"`)) continue;
     const tag = `    <uses-permission android:name="${permission}"${maxSdk} />`;
     if (manifest.includes('</manifest>')) {
@@ -130,7 +152,7 @@ function patchManifest() {
 }
 
 /**
- * Копирует иконку уведомления в res/drawable и заменяет иконку приложения.
+ * Копирует иконку уведомления в res/drawable и обновляет иконки приложения под все плотности.
  */
 function patchIcons() {
   const resDir = path.join(ANDROID_DIR, 'app/src/main/res');
@@ -142,7 +164,6 @@ function patchIcons() {
   // 1) Иконка уведомления (smallIcon в LocalNotifications).
   const drawableDir = path.join(resDir, 'drawable');
   fs.mkdirSync(drawableDir, { recursive: true });
-
   const notificationSource = path.join(WWW_ICONS, 'icon48.png');
   if (fs.existsSync(notificationSource)) {
     fs.copyFileSync(
@@ -154,61 +175,65 @@ function patchIcons() {
     log('Предупреждение: www/icons/icon48.png не найден — иконка уведомления пропущена.');
   }
 
-  // 2) Легаси-иконки (используются на Android < 26).
-  const legacy = [
-    { dir: 'mipmap-mdpi', file: 'icon48.png' },
-    { dir: 'mipmap-hdpi', file: 'icon128.png' },
-    { dir: 'mipmap-xhdpi', file: 'icon128.png' },
-    { dir: 'mipmap-xxhdpi', file: 'icon128.png' },
-    { dir: 'mipmap-xxxhdpi', file: 'icon128.png' }
-  ];
-
-  for (const { dir, file } of legacy) {
-    const targetDir = path.join(resDir, dir);
-    const source = path.join(WWW_ICONS, file);
-    if (!fs.existsSync(targetDir) || !fs.existsSync(source)) continue;
-    fs.mkdirSync(targetDir, { recursive: true });
-    for (const name of ['ic_launcher.png', 'ic_launcher_round.png']) {
-      fs.copyFileSync(source, path.join(targetDir, name));
+  // 2) Удаляем устаревшие XML-foreground от шаблона Capacitor / прежней версии,
+  //    чтобы Android 8+ использовал растровый @mipmap/ic_launcher_foreground.
+  for (const staleRel of [
+    'drawable/ic_launcher_foreground.xml',
+    'drawable-v24/ic_launcher_foreground.xml'
+  ]) {
+    const stalePath = path.join(resDir, staleRel);
+    if (fs.existsSync(stalePath)) {
+      fs.rmSync(stalePath);
+      log(`Удалён устаревший ${staleRel}.`);
     }
   }
-  log('Легаси-иконки приложения обновлены.');
 
-  // 3) Adaptive icon (Android 8+): собственный вектор + тёмный фон.
-  const drawableDirIcon = path.join(resDir, 'drawable');
-  fs.mkdirSync(drawableDirIcon, { recursive: true });
-  fs.writeFileSync(
-    path.join(drawableDirIcon, 'ic_launcher_foreground.xml'),
-    ADAPTIVE_FOREGROUND_XML,
-    'utf8'
-  );
-
-  // Шаблон Capacitor содержит запасной вектор в drawable-v24 с тем же именем
-  // ресурса — он больше не используется, поэтому удаляется, чтобы не было
-  // двух разных foreground для одного и того же адаптивного значка.
-  const staleForeground = path.join(resDir, 'drawable-v24/ic_launcher_foreground.xml');
-  if (fs.existsSync(staleForeground)) {
-    fs.rmSync(staleForeground);
-    log('Удалён устаревший drawable-v24/ic_launcher_foreground.xml.');
+  // 3) Плотности mipmap-mdpi .. mipmap-xxxhdpi (legacy + adaptive foreground PNG).
+  const densities = ['mipmap-mdpi', 'mipmap-hdpi', 'mipmap-xhdpi', 'mipmap-xxhdpi', 'mipmap-xxxhdpi'];
+  if (fs.existsSync(ANDROID_DENSITY_ICONS)) {
+    for (const dir of densities) {
+      const srcDir = path.join(ANDROID_DENSITY_ICONS, dir);
+      if (!fs.existsSync(srcDir)) continue;
+      const dstDir = path.join(resDir, dir);
+      fs.mkdirSync(dstDir, { recursive: true });
+      for (const fileName of ['ic_launcher.png', 'ic_launcher_round.png', 'ic_launcher_foreground.png']) {
+        const srcFile = path.join(srcDir, fileName);
+        if (fs.existsSync(srcFile)) {
+          fs.copyFileSync(srcFile, path.join(dstDir, fileName));
+        }
+      }
+    }
+    log('Иконки приложения (mdpi–xxxhdpi, включая adaptive foreground) скопированы из www/icons/android.');
+  } else {
+    const legacy = [
+      { dir: 'mipmap-mdpi', file: 'icon48.png' },
+      { dir: 'mipmap-hdpi', file: 'icon128.png' },
+      { dir: 'mipmap-xhdpi', file: 'icon128.png' },
+      { dir: 'mipmap-xxhdpi', file: 'icon192.png' },
+      { dir: 'mipmap-xxxhdpi', file: 'icon192.png' }
+    ];
+    for (const { dir, file } of legacy) {
+      const targetDir = path.join(resDir, dir);
+      const source = path.join(WWW_ICONS, file);
+      if (!fs.existsSync(source)) continue;
+      fs.mkdirSync(targetDir, { recursive: true });
+      for (const name of ['ic_launcher.png', 'ic_launcher_round.png', 'ic_launcher_foreground.png']) {
+        fs.copyFileSync(source, path.join(targetDir, name));
+      }
+    }
+    log('Иконки приложения (fallback из www/icons) обновлены.');
   }
 
+  // 4) Adaptive icon (Android 8+): @mipmap/ic_launcher_foreground + фон #0A0E1C.
   const anydpiDir = path.join(resDir, 'mipmap-anydpi-v26');
   fs.mkdirSync(anydpiDir, { recursive: true });
   fs.writeFileSync(path.join(anydpiDir, 'ic_launcher.xml'), ADAPTIVE_ICON_XML, 'utf8');
-  fs.writeFileSync(
-    path.join(anydpiDir, 'ic_launcher_round.xml'),
-    ADAPTIVE_ICON_XML,
-    'utf8'
-  );
+  fs.writeFileSync(path.join(anydpiDir, 'ic_launcher_round.xml'), ADAPTIVE_ICON_XML, 'utf8');
 
   const valuesDir = path.join(resDir, 'values');
   fs.mkdirSync(valuesDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(valuesDir, 'ic_launcher_background.xml'),
-    BACKGROUND_COLOR_XML,
-    'utf8'
-  );
-  log('Adaptive icon: векторная полулуна + фон #0F1115.');
+  fs.writeFileSync(path.join(valuesDir, 'ic_launcher_background.xml'), BACKGROUND_COLOR_XML, 'utf8');
+  log('Adaptive icon настроен: @mipmap/ic_launcher_foreground + фон #0A0E1C.');
 }
 
 /**
@@ -220,10 +245,8 @@ function patchAppName() {
     'app/src/main/res/values/strings.xml'
   );
   if (!fs.existsSync(stringsPath)) return;
-
   let strings = fs.readFileSync(stringsPath, 'utf8');
   let changed = false;
-
   if (/<string name="app_name">My App<\/string>/.test(strings)) {
     strings = strings.replace(
       '<string name="app_name">My App</string>',
@@ -238,7 +261,6 @@ function patchAppName() {
     );
     changed = true;
   }
-
   if (changed) {
     fs.writeFileSync(stringsPath, strings, 'utf8');
     log('Название приложения в strings.xml обновлено.');
@@ -255,7 +277,6 @@ function patchGradleSdk() {
     log('Предупреждение: variables.gradle не найден — пропуск настройки minSdkVersion.');
     return;
   }
-
   let content = fs.readFileSync(varsPath, 'utf8');
   if (/minSdkVersion\s*=\s*\d+/.test(content)) {
     content = content.replace(/minSdkVersion\s*=\s*\d+/, 'minSdkVersion = 26');
@@ -265,6 +286,7 @@ function patchGradleSdk() {
 }
 
 patchManifest();
+patchAppVersion();
 patchIcons();
 patchAppName();
 patchGradleSdk();
